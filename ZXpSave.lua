@@ -2,6 +2,10 @@
 -- Xfire : anewxfireaccount
 -- Made for jemstar <3
 -- Feel free to report problems to my xfire
+-- https://github.com/Zelly/ZellyLuas for latest version
+-- Get JSON.lua from http://regex.info/blog/lua/json
+-- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
+-- xpsave.json saves to fs_homepath/fs_game/xpsave.json
 
 local _printDebug = false -- If you want to print to console
 local _logDebug   = false -- If you want it to log to server log ( Requires _printDebug = true )
