@@ -17,5 +17,5 @@ To use it:
 4. Start server. Should save.  
   
 Optional: Two Variables at the top of the determine the output of the lua  
-`local _printDebug = false` true if you want it to print to console | false if not
+`local _printDebug = false` true if you want it to print to console | false if not  
 `local _logDebug   = false` true if you want it to log to server log | false if not ( Requires _printDebug = true )  
