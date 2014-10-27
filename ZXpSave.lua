@@ -6,6 +6,10 @@
 -- Get JSON.lua from http://regex.info/blog/lua/json
 -- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
 -- xpsave.json saves to fs_homepath/fs_game/xpsave.json
+-- version: 3
+
+-- BUG: I guess it currently does not save xp on shutdown. I have fixed this in my LuaESMod, but I am not sure how I will fix it here.
+--      HOTFIX: You can either disconnect before game ends(At intermission) or type !savexp
 
 local _printDebug = false -- If you want to print to console
 local _logDebug   = false -- If you want it to log to server log ( Requires _printDebug = true )
@@ -187,6 +191,10 @@ function et_ClientCommand(clientNum,command)
     elseif ( Arg0 == "!finger" ) then
         local targetNum = et.ClientNumberFromString(et.trap_Argv(2))
         _printFinger(clientNum,targetNum)
+        return 1
+    elseif ( Arg0 == "!savexp" ) then
+        _saveXp(clientNum)
+        et.trap_SendServerCommand (clientNum, "chat \"^osavexp: ^7Your xp has been saved\"")
         return 1
     end
 end
