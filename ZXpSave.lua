@@ -6,11 +6,13 @@
 -- Get JSON.lua from http://regex.info/blog/lua/json
 -- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
 -- xpsave.json saves to fs_homepath/fs_game/xpsave.json
--- version: 3
+-- version: 4
 
--- BUG: I guess it currently does not save xp on shutdown. I have fixed this in my LuaESMod, but I am not sure how I will fix it here.
---      HOTFIX: You can either disconnect before game ends(At intermission) or type !savexp
+-- ADD: Version 4 added a _saveAllXp function that runs every _saveTime seconds
+-- BUG: Version 3 and below Xp will not save on shutdown
 
+
+local _saveTime   = 30    -- Seconds in between each runframe save
 local _printDebug = false -- If you want to print to console
 local _logDebug   = false -- If you want it to log to server log ( Requires _printDebug = true )
 local _print = function(msg)
@@ -160,6 +162,19 @@ local _printFinger = function(clientNum,targetNum)
     et.trap_SendServerCommand (clientNum, "print \"ETVERSION("..tostring(etversion)..") PROTOCOL("..tostring(protocol)..")\n\"")
 end
 
+local _saveXpAll = function()
+    for clientNum=0, tonumber(et.trap_Cvar_Get("sv_maxclients")) - 1 do
+        local connected = et.gentity_get(clientNum,"pers.connected")
+        -- 0 = Disconnected
+        -- 1 = Connecting  -- Might want to do 1 too which is 'currently connecting' but im not sure if their xp is readable then so maybe not...
+        -- 2 = Connected
+        if ( connected == 2 ) then
+            _print("_saveXpAll Client("..clientNum..") is connected, saving their xp")
+            _saveXp(clientNum)
+        end
+    end
+end
+
 function et_InitGame(levelTime, randomSeed, restart)
     et.RegisterModname ( "ZXPSave" )
     _print("Zelly's JSON Legacy Mod XpSave Lua Loaded")
@@ -167,17 +182,14 @@ function et_InitGame(levelTime, randomSeed, restart)
 end
 
 function et_ShutdownGame(restart)
-    for clientNum=0, tonumber(et.trap_Cvar_Get("sv_maxclients")) - 1 do
-        local connected = et.gentity_get(clientNum,"pers.connected")
-        -- 0 = Disconnected
-        -- 1 = Connecting  -- Might want to do 1 too which is 'currently connecting' but im not sure if their xp is readable then so maybe not...
-        -- 2 = Connected
-        if ( connected == 2 ) then
-            _print("et_ShutdownGame Client("..clientNum..") is connected, saving their xp")
-            _saveXp(clientNum)
-        end
-    end
+    _saveXpAll()
     _write()
+end
+
+function et_Runframe(levelTime)
+    if (  ( levelTime % ( _saveTime * 1000 ) ) == 0 ) then
+        _saveXpAll()
+    end
 end
 
 function et_ClientCommand(clientNum,command)
