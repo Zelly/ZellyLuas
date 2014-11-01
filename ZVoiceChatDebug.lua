@@ -5,20 +5,12 @@
 -- https://github.com/Zelly/ZellyLuas for latest version
 -- Log saves to fs_homepath/fs_game/voicechat.log
 -- You can have it stream a log or just have it save the entire log at the end of the round
--- version: 1
+-- version: 2
 
 local _writePath    = string.gsub(et.trap_Cvar_Get("fs_homepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/voicechat.log","\\","/")
 local _StreamFile = true -- If you want it to save after each new log, then set this true, false saves at end of round
 
 local LogFile = { }
-
-local _Log = function(message)
-    et.G_LogPrint( "VSAY_CHECK: " .. message .. "\n")
-    LogFile[#LogFile+1] = os.date("[%X]") .. " " .. message .. "\n"
-    if ( _StreamFile ) then
-        _Save()
-    end
-end
 
 local _Save = function()
     if ( LogFile == nil ) or ( next(LogFile) == nil ) then return end
@@ -30,11 +22,19 @@ local _Save = function()
     LogFile = { }
 end
 
+local _Log = function(message)
+    et.G_LogPrint( "VSAY_CHECK: " .. message .. "\n")
+    LogFile[#LogFile+1] = os.date("[%X]") .. " " .. message .. "\n"
+    if ( _StreamFile ) then
+        _Save()
+    end
+end
+
 function et_ClientCommand(clientNum,command)
     local Arg0 = string.lower(et.trap_Argv(0))
     if ( string.find(Arg0,"vsay",1,true) ) then
-        _Log("(" .. tostring(clientNum) .. ") " .. tostring(et.ConcatArgs(0)) .. "\n")
-        return 1
+        _Log("(" .. tostring(clientNum) .. ") " .. tostring(et.ConcatArgs(0)))
+        return 0
     end
 end
 
