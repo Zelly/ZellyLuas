@@ -6,8 +6,10 @@
 -- Get JSON.lua from http://regex.info/blog/lua/json
 -- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
 -- xpsave.json saves to fs_homepath/fs_game/xpsave.json
--- version: 5
+-- version: 5.1
 
+-- Version 5.1:
+--  Fixed _saveLog nil i think
 -- Version 5: 
 --  Fixed: Client saving 0 when client crash
 --  Added: Seperate log saving
@@ -39,6 +41,15 @@ local LogFile = { }
 
 JSON               = (loadfile(readPath .. "JSON.lua"))()
 
+local _saveLog = function() -- For some reason this needs to be above print O_o even tho they arent called until after init
+    if ( LogFile == nil ) or ( next(LogFile) == nil ) then return end
+    local FileObject = io.open(XP_LOGFILE,"a")
+    for k=1,#LogFile do
+        FileObject:write(msg.."\n")
+    end
+    FileObject:close()
+end
+
 local _print = function(msg)
     if not ( _printDebug ) then return end
     msg = et.Q_CleanStr(msg)
@@ -54,15 +65,6 @@ local _print = function(msg)
             _saveLog()
         end
     end
-end
-
-local _saveLog = function()
-    if ( LogFile == nil ) or ( next(LogFile) == nil ) then return end
-    local FileObject = io.open(XP_LOGFILE,"a")
-    for k=1,#LogFile do
-        FileObject:write(msg.."\n")
-    end
-    FileObject:close()
 end
 
 local _write = function()
