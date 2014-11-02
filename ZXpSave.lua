@@ -6,35 +6,26 @@
 -- Get JSON.lua from http://regex.info/blog/lua/json
 -- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
 -- xpsave.json saves to fs_homepath/fs_game/xpsave.json
--- version: 4
+-- version: 5
 
+-- Version 5: 
+--  Fixed: Client saving 0 when client crash
+--  Added: Seperate log saving
 -- ADD: Version 4 added a _saveAllXp function that runs every _saveTime seconds
 -- BUG: Version 3 and below Xp will not save on shutdown
 
 
-local _saveTime   = 30    -- Seconds in between each runframe save
-local _printDebug = false -- If you want to print to console
-local _logDebug   = false -- If you want it to log to server log ( Requires _printDebug = true )
-local _print = function(msg)
-    if not ( _printDebug ) then return end
-    msg = et.Q_CleanStr(msg)
-    if ( string.len(msg) <= 0 ) then return end
-    if ( _logDebug ) then
-        et.G_LogPrint("ZXPSAVE: " .. msg .. "\n")
-    else
-        et.G_Print("ZXPSAVE: " .. msg .. "\n")
-    end
-end
+local _saveTime      = 30    -- Seconds in between each runframe save
+local _printDebug    = false -- If you want to print to console
+local _logPrintDebug = false -- If you want it to log to server log ( Requires _printDebug = true )
+local _logDebug      = false -- If you want it to log to xpsave.log
+local _logStream     = false -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires _logDebug = true )
 
 local readPath     = string.gsub(et.trap_Cvar_Get("fs_basepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
 local writePath    = string.gsub(et.trap_Cvar_Get("fs_homepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
 
-_print("Load Path : " .. tostring(readPath))
-_print("Write Path : " .. tostring(writePath))
-
-JSON               = (loadfile(readPath .. "JSON.lua"))()
-
 local XP_FILE      = writePath .. "xpsave.json" -- If you want you can replace writePath with readPath here I think
+local XP_LOGFILE   = writePath .. "xpsave.log"
 local BATTLESENSE  = 0
 local ENGINEERING  = 1
 local MEDIC        = 2
@@ -43,9 +34,36 @@ local LIGHTWEAPONS = 4
 local HEAVYWEAPONS = 5
 local COVERTOPS    = 6
 
+local XP      = { }
+local LogFile = { }
 
-local XP = {}
+JSON               = (loadfile(readPath .. "JSON.lua"))()
 
+local _print = function(msg)
+    if not ( _printDebug ) then return end
+    msg = et.Q_CleanStr(msg)
+    if ( string.len(msg) <= 0 ) then return end
+    if ( _logPrintDebug ) then
+        et.G_LogPrint("ZXPSAVE: " .. msg .. "\n")
+    else
+        et.G_Print("ZXPSAVE: " .. msg .. "\n")
+    end
+    if ( _logDebug ) then
+        LogFile[#LogFile+1] = os.date("[%X]") .. " " .. msg
+        if ( _logStream ) then
+            _saveLog()
+        end
+    end
+end
+
+local _saveLog = function()
+    if ( LogFile == nil ) or ( next(LogFile) == nil ) then return end
+    local FileObject = io.open(XP_LOGFILE,"a")
+    for k=1,#LogFile do
+        FileObject:write(msg.."\n")
+    end
+    FileObject:close()
+end
 
 local _write = function()
     _print( "_write() XP(".. tostring(XP) .. ") XP_FILE(".. tostring(XP_FILE) .. ")" )
@@ -86,6 +104,15 @@ local _validateGUID = function (clientNum, guid)
     return true
 end
 
+local _setSkillPoints = function(clientNum,guid,skillNum)
+    local sp = et.gentity_get(clientNum, "sess.skillpoints", skillNum)
+    if ( sp < XP[guid].skills[skillNum+1] ) then -- Should always be equal to or greater than
+        _print("_saveXp skill was less than saved skill, will not save")
+        return
+    end
+    XP[guid].skills[skillNum+1] = et.gentity_get(clientNum, "sess.skillpoints", skillNum)
+end
+
 local _saveXp = function(clientNum)
     --local name = et.Info_ValueForKey( et.trap_GetUserinfo( clientNum ), "name" )
     local GUID = et.Info_ValueForKey( et.trap_GetUserinfo( clientNum ), "cl_guid" )
@@ -99,13 +126,10 @@ local _saveXp = function(clientNum)
         XP[GUID].skills = { }
     end
     GUID = string.upper(GUID)
-    XP[GUID].skills[BATTLESENSE+1]  = et.gentity_get(clientNum, "sess.skillpoints", BATTLESENSE)
-    XP[GUID].skills[ENGINEERING+1]  = et.gentity_get(clientNum, "sess.skillpoints", ENGINEERING)
-    XP[GUID].skills[MEDIC+1]        = et.gentity_get(clientNum, "sess.skillpoints", MEDIC)
-    XP[GUID].skills[FIELDOPS+1]     = et.gentity_get(clientNum, "sess.skillpoints", FIELDOPS)
-    XP[GUID].skills[LIGHTWEAPONS+1] = et.gentity_get(clientNum, "sess.skillpoints", LIGHTWEAPONS)
-    XP[GUID].skills[HEAVYWEAPONS+1] = et.gentity_get(clientNum, "sess.skillpoints", HEAVYWEAPONS)
-    XP[GUID].skills[COVERTOPS+1]    = et.gentity_get(clientNum, "sess.skillpoints", COVERTOPS)
+    for k=BATTLESENSE,COVERTOPS do
+        _setSkillPoints(clientNUm,GUID,k)
+    end
+    
     if ( et.gentity_get(clientNum,"sess.referee") == 1 ) then
         XP[GUID].referee = true
         _print("_saveXp Client("..tostring(clientNum)..") saved referee status")
@@ -175,6 +199,9 @@ local _saveXpAll = function()
     end
 end
 
+_print("Load Path : " .. tostring(readPath))
+_print("Write Path : " .. tostring(writePath))
+
 function et_InitGame(levelTime, randomSeed, restart)
     et.RegisterModname ( "ZXPSave" )
     _print("Zelly's JSON Legacy Mod XpSave Lua Loaded")
@@ -184,6 +211,7 @@ end
 function et_ShutdownGame(restart)
     _saveXpAll()
     _write()
+    _saveLog()
 end
 
 function et_Runframe(levelTime)
