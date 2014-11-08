@@ -6,8 +6,10 @@
 -- Get JSON.lua from http://regex.info/blog/lua/json
 -- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
 -- xpsave.json saves to fs_homepath/fs_game/xpsave.json
--- version: 5.1
+-- version: 6
 
+-- Version 6
+--  Fixed everything that i added in version 4 and 5 :P
 -- Version 5.1:
 --  Fixed _saveLog nil i think
 -- Version 5: 
@@ -20,8 +22,8 @@
 local _saveTime      = 30    -- Seconds in between each runframe save
 local _printDebug    = false -- If you want to print to console
 local _logPrintDebug = false -- If you want it to log to server log ( Requires _printDebug = true )
-local _logDebug      = false -- If you want it to log to xpsave.log
-local _logStream     = false -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires _logDebug = true )
+local _logDebug      = true -- If you want it to log to xpsave.log
+local _logStream     = true -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires _logDebug = true )
 
 local readPath     = string.gsub(et.trap_Cvar_Get("fs_basepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
 local writePath    = string.gsub(et.trap_Cvar_Get("fs_homepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
@@ -45,18 +47,20 @@ local _saveLog = function() -- For some reason this needs to be above print O_o 
     if ( LogFile == nil ) or ( next(LogFile) == nil ) then return end
     local FileObject = io.open(XP_LOGFILE,"a")
     for k=1,#LogFile do
-        FileObject:write(msg.."\n")
+        FileObject:write(LogFile[k].."\n")
     end
     FileObject:close()
+    LogFile = { }
 end
 
 local _print = function(msg)
-    if not ( _printDebug ) then return end
+    --if not ( _printDebug ) then return end
+    if ( msg == nil ) then return end
     msg = et.Q_CleanStr(msg)
     if ( string.len(msg) <= 0 ) then return end
     if ( _logPrintDebug ) then
         et.G_LogPrint("ZXPSAVE: " .. msg .. "\n")
-    else
+    elseif ( _printDebug ) then
         et.G_Print("ZXPSAVE: " .. msg .. "\n")
     end
     if ( _logDebug ) then
@@ -112,26 +116,26 @@ local _setSkillPoints = function(clientNum,guid,skillNum)
         _print("_saveXp skill was less than saved skill, will not save")
         return
     end
-    XP[guid].skills[skillNum+1] = et.gentity_get(clientNum, "sess.skillpoints", skillNum)
+    XP[guid].skills[skillNum+1] = sp
 end
 
 local _saveXp = function(clientNum)
     --local name = et.Info_ValueForKey( et.trap_GetUserinfo( clientNum ), "name" )
+    --GUID = string.upper(GUID)
     local GUID = et.Info_ValueForKey( et.trap_GetUserinfo( clientNum ), "cl_guid" )
     if not ( _validateGUID(clientNum,GUID) ) then return end
     _print("_saveXp Client(" .. tostring(clientNum) .. ") guid(" .. tostring(GUID) .. ")")
     if ( XP[GUID] == nil or next(XP[GUID]) == nil ) then
         XP[GUID] = { }
-        _print("_saveXp new xpsave table created for (" .. tostring(guid) .. ")")
+        _print("_saveXp new xpsave table created for (" .. tostring(GUID) .. ")")
     end
     if ( XP[GUID].skills == nil or next(XP[GUID].skills) == nil ) then -- Check Separately just in-case for some reason this doesn't exist.
         XP[GUID].skills = { }
     end
-    GUID = string.upper(GUID)
     for k=BATTLESENSE,COVERTOPS do
-        _setSkillPoints(clientNUm,GUID,k)
+        _setSkillPoints(clientNum,GUID,k)
     end
-    
+    _print("_saveXp (" .. tostring(GUID) .. ") " .. tostring(XP[GUID].skills[BATTLESENSE+1]) .. " " .. tostring(XP[GUID].skills[ENGINEERING+1]) .. " " .. tostring(XP[GUID].skills[MEDIC+1]) .. " " .. tostring(XP[GUID].skills[FIELDOPS+1]) .. " " .. tostring(XP[GUID].skills[LIGHTWEAPONS+1]) .. " " .. tostring(XP[GUID].skills[HEAVYWEAPONS+1]) .. " " .. tostring(XP[GUID].skills[COVERTOPS+1]) )
     if ( et.gentity_get(clientNum,"sess.referee") == 1 ) then
         XP[GUID].referee = true
         _print("_saveXp Client("..tostring(clientNum)..") saved referee status")
@@ -146,7 +150,7 @@ local _loadXp = function(clientNum)
     _print("_loadXp Client(" .. tostring(clientNum) .. ") guid(" .. tostring(GUID) .. ")")
     if ( XP[GUID] == nil or next(XP[GUID]) == nil ) then
         XP[GUID] = { }
-        _print("_loadXp new xpsave table created for (" .. tostring(guid) .. ")")
+        _print("_loadXp new xpsave table created for (" .. tostring(GUID) .. ")")
     end
     if ( XP[GUID].skills == nil or next(XP[GUID].skills) == nil ) then -- Check Separately just in-case for some reason this doesn't exist.
         XP[GUID].skills = { }
@@ -156,7 +160,7 @@ local _loadXp = function(clientNum)
             XP[GUID].skills[k] = 0
         end
     end
-    _print("_loadXp (" .. tostring(guid) .. ") " .. tostring(XP[GUID].skills[BATTLESENSE+1]) .. " " .. tostring(XP[GUID].skills[ENGINEERING+1]) .. " " .. tostring(XP[GUID].skills[MEDIC+1]) .. " " .. tostring(XP[GUID].skills[FIELDOPS+1]) .. " " .. tostring(XP[GUID].skills[LIGHTWEAPONS+1]) .. " " .. tostring(XP[GUID].skills[HEAVYWEAPONS+1]) .. " " .. tostring(XP[GUID].skills[COVERTOPS+1]) )
+    _print("_loadXp (" .. tostring(GUID) .. ") " .. tostring(XP[GUID].skills[BATTLESENSE+1]) .. " " .. tostring(XP[GUID].skills[ENGINEERING+1]) .. " " .. tostring(XP[GUID].skills[MEDIC+1]) .. " " .. tostring(XP[GUID].skills[FIELDOPS+1]) .. " " .. tostring(XP[GUID].skills[LIGHTWEAPONS+1]) .. " " .. tostring(XP[GUID].skills[HEAVYWEAPONS+1]) .. " " .. tostring(XP[GUID].skills[COVERTOPS+1]) )
     et.G_XP_Set( clientNum, XP[GUID].skills[BATTLESENSE+1]  , BATTLESENSE  , 0)
     et.G_XP_Set( clientNum, XP[GUID].skills[ENGINEERING+1]  , ENGINEERING  , 0)
     et.G_XP_Set( clientNum, XP[GUID].skills[MEDIC+1]        , MEDIC        , 0)
@@ -201,23 +205,46 @@ local _saveXpAll = function()
     end
 end
 
-_print("Load Path : " .. tostring(readPath))
-_print("Write Path : " .. tostring(writePath))
+local _map = function()
+    return tostring(et.trap_Cvar_Get("mapname"))
+end
+
+local _laststate = -1
+local _gamestate = function()
+    local gs = tonumber(et.trap_Cvar_Get("gamestate"))
+    if ( gs == 0 ) then
+        if ( laststate == 2 ) then
+            return "warmup end"
+        end
+        return "game"
+    elseif ( gs == -1 ) then
+        return "game end"
+    elseif ( gs == 2 ) then
+        _laststate = 2
+        return "warmup"
+    else
+        return tostring(gs)
+    end
+end
 
 function et_InitGame(levelTime, randomSeed, restart)
     et.RegisterModname ( "ZXPSave" )
-    _print("Zelly's JSON Legacy Mod XpSave Lua Loaded")
+    _print("Zelly's JSON Legacy Mod XpSave Lua Init - " .. _gamestate() .. " - " .. _map())
+    _print("Load Path : " .. tostring(readPath))
+    _print("Write Path : " .. tostring(writePath))
     XP = _read()
 end
 
 function et_ShutdownGame(restart)
+    _print("Zelly's JSON Legacy Mod XpSave Lua Shutdown - " .. _gamestate() .. " - " .. _map())
     _saveXpAll()
     _write()
     _saveLog()
 end
 
-function et_Runframe(levelTime)
+function et_RunFrame(levelTime)
     if (  ( levelTime % ( _saveTime * 1000 ) ) == 0 ) then
+        _print("et_Runframe saving all active clients")
         _saveXpAll()
     end
 end
