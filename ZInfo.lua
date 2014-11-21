@@ -1,52 +1,61 @@
--- NOT COMPLETE
--- Zelly's JSON Info Logger
--- Xfire : anewxfireaccount
--- Feel free to report problems to my xfire
--- https://github.com/Zelly/ZellyLuas for latest version
--- Get JSON.lua from http://regex.info/blog/lua/json
--- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
--- info.json saves to fs_homepath/fs_game/info.json
--- version: 0
-
--- History
--- Version 0
---   In progress
-
--- Notes
---   Table is not saving past 2 tables in PLAYER[GUID].WEAPONS works PLAYER[GUID].WEAPONS[WEAPONID] does not
---   May need to write each guid to seperate file
---   RunFrame times are not working
-
 local _time = os.time
 local _pcall  = pcall
 local _pairs = pairs
 local tostring = tostring
 local tonumber = tonumber
 local loadfile = loadfile
+--TODO Make a tad prettier particularly handling weapons
+--TODO If value == 0 then dont save ( Save a little on info.json )
+--TODO Make a proper debugging
+--TODO Fix bottimes and playertimes tables need to be table of tables playertime = { { players=5,time=239, }, { players=4,time=213, }, }
 local readPath     = string.gsub(et.trap_Cvar_Get("fs_basepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
 local writePath    = string.gsub(et.trap_Cvar_Get("fs_homepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
-_INFOTIME    = 10
+_INFOTIME    = 2
 
 JSON         = (loadfile(readPath .. "JSON.lua"))()
 PlayerData = { }
 
-_print = function(msg)
-    et.trap_SendServerCommand (et.ClientNumberFromString( "zelly" ), "print \"^ozinfo: ^7"..msg.."\n\"")
-    et.G_LogPrint("zinfo: "..msg.."\n")
+local _debuglevel   = 1
+local _debugto      = "" -- "zelly" for zelly
+local LEVEL_NONE    = 0
+local LEVEL_INFO    = 1
+local LEVEL_WARNING = 2
+local LEVEL_DEBUG   = 4
+
+local _print = function(msg,level)
+    if ( level == nil ) then return end
+    if ( level <= LEVEL_NONE ) then return end
+    if ( _debuglevel <= LEVEL_NONE ) then return end
+    if ( level == LEVEL_INFO ) and ( _debuglevel >= LEVEL_INFO ) then
+        msg = "^ozinfo(info ): ^7" .. msg
+    elseif ( level == LEVEL_WARNING ) and ( _debuglevel >= LEVEL_WARNING ) then
+        msg = "^ozinfo(warn ): ^7" .. msg
+    elseif ( level == LEVEL_DEBUG ) and ( _debuglevel >= LEVEL_DEBUG ) then
+        msg = "^ozinfo(debug): ^7" .. msg
+    else
+        return
+    end
+    if ( _debugto ~= "" ) then
+        et.trap_SendServerCommand (et.ClientNumberFromString( _debugto ), "print \""..msg.."\n\"")
+    end
+    et.G_LogPrint(et.Q_CleanStr(msg) .. "\n")
 end
 
-_write = function()
-    local player_encode = JSON:encode_pretty( PlayerData )
+local _write = function()
+    _print("Writing file...",LEVEL_DEBUG)
+    local player_encode = JSON:encode( PlayerData )
     local FileObject = io.open( writePath .. "info.json" , "w" )
     FileObject:write(player_encode)
     FileObject:close()
+    _print("Successfully wrote file...",LEVEL_DEBUG)
 end
 
-_read = function()
+local _read = function()
+    _print("Reading file...",LEVEL_DEBUG)
     local status,FileObject = pcall(io.open, writePath .. "info.json", "r")
     if not ( status ) or ( FileObject == nil ) then
         PlayerData = { }
-        _print("error reading file")
+        _print("Error reading file",LEVEL_WARNING)
         return
     end
     local fileData = { }
@@ -60,22 +69,23 @@ _read = function()
     PlayerData = JSON:decode( table.concat(fileData,"\n") )
     if ( PlayerData == nil ) then
         PlayerData = { }
-        _print("error reading info")
+        _print("Error reading info",LEVEL_WARNING)
     end
+    _print("Done reading file...",LEVEL_DEBUG)
 end
 
-_entget = function(clientNum,fieldname,type_expected)
+local _entget = function(clientNum,fieldname,type_expected)
     if ( type_expected == nil ) then type_expected = "string" end
     local status,value = _pcall(et.gentity_get,clientNum,fieldname)
     if not ( status ) then
-        _print( "error entget")
+        _print( "Error entget",LEVEL_WARNING)
         value = 0
     end
     
     if ( type_expected == "number" ) then
         value = tonumber(value)
         if value == nil then
-            _print( "error entget nil")
+            _print( "Error entget nil",LEVEL_WARNING)
             value = 0
         end
     else
@@ -84,17 +94,17 @@ _entget = function(clientNum,fieldname,type_expected)
     return value
 end
 
-_userinfo = function(clientNum)
+local _userinfo = function(clientNum)
     if not clientNum then return "" end
     if ( clientNum > 63 ) then return "" end
     return et.trap_GetUserinfo( clientNum ) 
 end
 
-_ip = function(clientNum)
+local _ip = function(clientNum)
     return string.gsub(et.Info_ValueForKey( _userinfo(clientNum) , "ip" ), ":%d*","")
 end
 
-_guid = function(clientNum)
+local _guid = function(clientNum)
     --local guid = et.Info_ValueForKey( _userinfo(clientNum) , "cl_guid" )
     local guid = _entget(clientNum,"sess.guid")
     guid = string.gsub(guid, ":%d*","")
@@ -104,11 +114,11 @@ _guid = function(clientNum)
     return guid
 end
 
-_name = function(clientNum)
+local _name = function(clientNum)
     return et.Q_CleanStr(et.Info_ValueForKey( _userinfo(clientNum) , "name" ))
 end
 
-_bot = function(clientNum)
+local _bot = function(clientNum)
     if ( _ip(clientNum) == "localhost" ) then
         return true
     else
@@ -116,8 +126,9 @@ _bot = function(clientNum)
     end
 end
 
-_create = function(clientNum,guid)
+local _create = function(clientNum,guid)
     if ( PlayerData[guid] == nil ) then
+        _print("Creating guid slot " .. guid,LEVEL_DEBUG)
         PlayerData[guid] = {
             names                      = { },
             playertime                 = { },
@@ -150,22 +161,23 @@ _create = function(clientNum,guid)
     PlayerData[guid].starttime = _time()
 end
 
-_active = function(clientNum)
+local _active = function(clientNum)
     if ( _entget(clientNum,"pers.connected","number") == 2 ) then
         return true
     end
     return false
 end
 
-_isgame = function()
+local _isgame = function(num)
+    if num == nil then num = 0 end
     local gamestate = tonumber( et.trap_Cvar_Get( "gamestate" ) )
-    if not ( gamestate == 0 ) then
+    if not ( gamestate == num ) then
         return false
     end
     return true
 end
 
-_playersbots = function()
+local _playersbots = function()
     local maxclients = ( tonumber( et.trap_Cvar_Get( "sv_maxclients" ) ) - 1 )
     local players = 0
     local bots = 0
@@ -183,61 +195,52 @@ _playersbots = function()
     end
     return players,bots
 end
-
-_addweapon = function(guid,weaponid)
-    _print( "g("..tostring(guid)..") w("..tostring(weaponid)..")")
-    _print( "pd("..tostring(PlayerData)..") pdg("..tostring(PlayerData[guid])..")")
-    _print( "pdgw("..tostring(PlayerData[guid].weapons)..") pdgww("..tostring(PlayerData[guid].weapons[weaponid])..")")
-    if ( PlayerData[guid].weapons[weaponid] == nil ) then
-        PlayerData[guid].weapons[weaponid] = { kills=0,deaths=0,botkills=0,botdeaths=0,teamkills=0,teamdeaths=0,worlddeaths=0,weapontime=0, }
+local _weapon = function(guid,weaponid)
+    for k=1,#PlayerData[guid].weapons do
+        if ( PlayerData[guid].weapons[k].id == weaponid ) then
+            _print( "Found weapon " .. weaponid .. " in " .. guid,LEVEL_DEBUG)
+            return PlayerData[guid].weapons[k]
+        end
     end
+    _print( "Created weapon " .. weaponid .. " in " .. guid,LEVEL_DEBUG)
+    PlayerData[guid].weapons[#PlayerData[guid].weapons+1] = { id = weaponid, kills=0,deaths=0,botkills=0,botdeaths=0,teamkills=0,teamdeaths=0,worlddeaths=0,weapontime=0, }
+    return PlayerData[guid].weapons[#PlayerData[guid].weapons]
 end
 
-_runframe = function()
+local _runframe = function()
     local maxclients = ( tonumber( et.trap_Cvar_Get( "sv_maxclients" ) ) - 1 )
     local curtime = _time()
     local players,bots = _playersbots()
     for clientNum=0, maxclients do
         if ( _active(clientNum) ) and not ( _bot(clientNum) ) then
-            _print( "Runframe clientnum("..tostring(clientNum)..") - s0")
             local guid = _guid(clientNum)
-            _print( "Runframe clientnum("..tostring(clientNum)..") - s1")
-            _print( "rf g("..tostring(guid)..")")
-            _print( "rf pd("..tostring(PlayerData)..")")
-            _print( "rf pdg("..tostring(PlayerData[guid])..")")
-            _print( "rf pdgst("..tostring(PlayerData[guid].starttime)..")")
             if ( PlayerData[guid] == nil ) then _create(clientNum,guid) end
             if ( PlayerData[guid].starttime == nil ) then PlayerData[guid].starttime = curtime end
-            _print( "Runframe clientnum("..tostring(clientNum)..") - s2")
             local deltatime = ( curtime - PlayerData[guid].starttime )
-            _print( "ct("..tostring(curtime)..") - st("..tostring(PlayerData[guid].starttime)..") = dt("..tostring(deltatime)..") ( >= it("..tostring(_INFOTIME)..") )")
             if ( deltatime >= _INFOTIME ) then
-                _print( "Runframe clientnum("..tostring(clientNum)..") - s3")
                 local team = _entget(clientNum,"sess.sessionTeam","number")
                 if ( team == 1 ) or ( team == 2 ) then
                     if ( PlayerData[guid].playertime[players] == nil ) then PlayerData[guid].playertime[players] = 0 end
                     if ( PlayerData[guid].bottime[bots] == nil ) then PlayerData[guid].bottime[bots] = 0 end
                     PlayerData[guid].playertime[players] = ( PlayerData[guid].playertime[players] + _INFOTIME )
                     PlayerData[guid].bottime[bots] = ( PlayerData[guid].bottime[bots] + _INFOTIME )
-                    local weapon = _entget(clientNum,"s.weapon","number")
-                    _addweapon(guid,weapon)
-                    PlayerData[guid].weapons[weapon].weapontime = ( PlayerData[guid].weapons[weapon].weapontime + _INFOTIME )
+                    local weapon = _weapon(guid,_entget(clientNum,"s.weapon","number"))
+                    weapon.weapontime = ( weapon.weapontime + _INFOTIME )
                 end
-                if ( team == 1 ) then
+                if ( team == 2 ) then
                     PlayerData[guid].alliestime = ( PlayerData[guid].alliestime + _INFOTIME )
-                elseif ( team == 2 ) then
+                elseif ( team == 1 ) then
                     PlayerData[guid].axistime = ( PlayerData[guid].axistime + _INFOTIME )
                 else
                     PlayerData[guid].spectime = ( PlayerData[guid].spectime + _INFOTIME )
                 end
-                _print( "Runframe clientnum("..tostring(clientNum)..") - s4")
             end
         end
     end
 end
 
-_sortLevels = function(a,b) return tonumber(a.id) < tonumber(b.id) end
-_setlevel = function(clientNum,target,level,silent)
+local _sortLevels = function(a,b) return tonumber(a.id) < tonumber(b.id) end
+local _setlevel = function(clientNum,target,level,silent)
     if ( et.G_shrubbot_permission( clientNum, "s" ) == 0 ) then return end
     if ( silent == true ) and ( et.G_shrubbot_permission( clientNum, "3" ) == 0 ) then return end
     level = tonumber(level)
@@ -256,17 +259,17 @@ _setlevel = function(clientNum,target,level,silent)
     PlayerData[guid].levelinfo[#PlayerData[guid].levelinfo+1] = { id = nextid, level=level, leveler=_guid(clientNum), levelername=_name(clientNum) }
 end
 
-_printdata = function(guid)
-    _print("guid("..tostring(guid)..")")
-    _print("PlayerData[guid]("..tostring(PlayerData[guid])..")")
+local _printdata = function(guid)
+    _print("guid("..tostring(guid)..")",LEVEL_INFO)
+    _print("PlayerData[guid]("..tostring(PlayerData[guid])..")",LEVEL_INFO)
     for i,v in _pairs(PlayerData[guid]) do
-        _print("I("..tostring(i)..") V("..tostring(v)..")")
+        _print( tostring(i)..": "..tostring(v),LEVEL_INFO)
         if ( type(v) == "table" ) then
             for i2,v2 in _pairs(v) do
-                _print("I2("..tostring(i2)..") V2("..tostring(v2)..")")
+                _print("  ^z"..tostring(i2)..": "..tostring(v2),LEVEL_INFO)
                 if ( type(v2) == "table" ) then
                     for i3,v3 in _pairs(v2) do
-                        _print("I3("..tostring(i3)..") V3("..tostring(v3)..")")
+                        _print("    ^z"..tostring(i3)..": "..tostring(v3),LEVEL_INFO)
                     end
                 end
             end
@@ -282,7 +285,8 @@ function et_InitGame(levelTime, randomSeed, restart)
 end
 
 function et_ShutdownGame(restart)
-    if ( _isgame() ) then -- Maybe
+    _print("gamestate: " .. tostring(et.trap_Cvar_Get( "gamestate" )),LEVEL_DEBUG)
+    if ( gamestate == 2 or gamestate == -1 ) then
         local curtime = _time()
         for _,player in _pairs(PlayerData) do
             if ( player.starttime ~= nil ) then
@@ -300,12 +304,10 @@ function et_ShutdownGame(restart)
 end
 
 function et_ClientBegin(clientNum)
+    if not ( _isgame() ) then return end
     if ( _bot(clientNum) ) then return end
     local guid = _guid(clientNum)
     _create(clientNum,guid)
-    _print( "c num(" .. tostring(clientNum)..")")
-    _print( "c g(" .. tostring(guid)..")")
-    _print( "c t(" .. tostring(PlayerData[guid])..")")
 end
 
 function et_ClientDisconnect(clientNum)
@@ -331,10 +333,12 @@ function et_Obituary( victim, killer, _mod )
     local victimguid = _guid(victim)
     if not ( _bot(victim) ) and ( PlayerData[victimguid] == nil ) then _create(victim,victimguid) end
     if ( killer == 1022 ) and not ( _bot(victim) ) then
-        _addweapon(victimguid,_mod)
         PlayerData[victimguid].deaths = PlayerData[victimguid].worlddeaths + 1
-        PlayerData[victimguid].weapons[_mod].worlddeaths = PlayerData[victimguid].weapons[_mod].worlddeaths + 1
-        _print( "worlddeath")
+
+        local weapon =_weapon(victimguid,_mod)
+        weapon.worlddeaths = ( weapon.worlddeaths + 1 )
+
+        _print( "worlddeath",LEVEL_DEBUG)
         return
     end
     if ( _bot(victim) ) and ( _bot(killer) ) then return end
@@ -344,48 +348,48 @@ function et_Obituary( victim, killer, _mod )
     if not ( _bot(killer) ) and ( PlayerData[killerguid] == nil ) then _create(killer,killerguid) end
 
     if ( killer == victim ) then
-        _addweapon(killerguid,_mod)
         PlayerData[killerguid].selfkills = PlayerData[killerguid].selfkills + 1
-        PlayerData[killerguid].weapons[_mod].deaths = PlayerData[killerguid].weapons[_mod].deaths + 1
-        _print( "selfkill")
+        local weapon = _weapon(killerguid,_mod)
+        weapon.deaths = ( weapon.deaths + 1 )
+        _print( "selfkill",LEVEL_DEBUG)
         return
     end
     if ( victimteam == killerteam ) then --Teamkills/teamdeaths takes priority over botkills/deaths
         if not ( _bot(killer) ) then
             PlayerData[killerguid].teamkills = PlayerData[killerguid].teamkills + 1
-            _addweapon(killerguid,_mod)
-            PlayerData[killerguid].weapons[_mod].teamkills = PlayerData[killerguid].weapons[_mod].teamkills + 1
-            _print( "teamkill")
+            local weapon = _weapon(killerguid,_mod)
+            weapon.teamkills = ( weapon.teamkills + 1 )
+            _print( "teamkill",LEVEL_DEBUG)
         end
         if not ( _bot(victim) ) then
-            _addweapon(victimguid,_mod)
-            PlayerData[victimguid].weapons[_mod].teamdeaths = PlayerData[victimguid].weapons[_mod].teamdeaths + 1
-            PlayerData[victimguid].teamdeaths = PlayerData[victimguid].teamdeaths + 1
-            _print( "teamdeath")
+            local weapon = _weapon(victimguid,_mod)
+            weapon.teamdeaths = ( weapon.teamdeaths + 1 )
+            _print( "teamdeath",LEVEL_DEBUG)
         end
         return
     end
     if ( _bot(victim) ) then
-        _addweapon(killerguid,_mod)
-        PlayerData[killerguid].weapons[_mod].botkills = PlayerData[killerguid].weapons[_mod].botkills + 1
         PlayerData[killerguid].botkills = PlayerData[killerguid].botkills + 1
-        _print( "botkill")
+        local weapon = _weapon(killerguid,_mod)
+        weapon.botkills = ( weapon.botkills + 1 )
+        _print( "botkill",LEVEL_DEBUG)
         return
     end
     if ( _bot(killer) ) then
-        _addweapon(victimguid,_mod)
-        PlayerData[victimguid].weapons[_mod].botdeaths = PlayerData[victimguid].weapons[_mod].botdeaths + 1
         PlayerData[victimguid].botdeaths = PlayerData[victimguid].botdeaths + 1
-        _print( "botdeath")
+        local weapon = _weapon(victimguid,_mod)
+        weapon.botdeaths = ( weapon.botdeaths + 1 )
+        _print( "botdeath",LEVEL_DEBUG)
         return
     end
-    _addweapon(victimguid,_mod)
-    _addweapon(killerguid,_mod)
-    PlayerData[victimguid].weapons[_mod].deaths = PlayerData[victimguid].weapons[_mod].deaths + 1
     PlayerData[victimguid].deaths = PlayerData[victimguid].deaths + 1
-    PlayerData[killerguid].weapons[_mod].kills = PlayerData[killerguid].weapons[_mod].kills + 1
     PlayerData[killerguid].kills = PlayerData[killerguid].kills + 1
-    _print( "kill|death")
+    
+    local kweapon = _weapon(killerguid,_mod)
+    local vweapon = _weapon(victimguid,_mod)
+    kweapon.kills = ( kweapon.kills + 1 )
+    vweapon.deaths = ( vweapon.deaths + 1 )
+    _print( "kill|death",LEVEL_DEBUG)
 end
 
 function et_RunFrame(levelTime)
@@ -402,8 +406,17 @@ function et_ClientCommand(clientNum,command)
         _setlevel(clientNum,et.trap_Argv(1),et.trap_Argv(2),true)
     elseif ( Arg0 == "say" ) and ( Arg1 == "!setlevel" ) then
         _setlevel(clientNum,et.trap_Argv(2),et.trap_Argv(3),false)
+--[[
     elseif ( Arg0 == "test" ) then
         _printdata(_guid(clientNum))
         return 1
+    elseif ( Arg0 == "save" ) then
+        _print("Writing table")
+        _write()
+        return 1
+    elseif ( Arg0 == "getteam" ) then   
+        local team = _entget(clientNum,"sess.sessionTeam","number")
+        _print( tostring(team) )
+        return 1]]---
     end
 end
