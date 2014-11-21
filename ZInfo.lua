@@ -1,13 +1,28 @@
+--- NOT COMPLETE
+--- Zelly's JSON Info Logger
+--- Xfire : anewxfireaccount
+--- Feel free to report problems to my xfire
+--- https://github.com/Zelly/ZellyLuas for latest version
+--- Get JSON.lua from http://regex.info/blog/lua/json
+--- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
+--- info.json saves to fs_homepath/fs_game/info.json
+--- version: 0
+
+--- History
+--- Version 0
+---   In progress
+
+--- Notes
+--TODO Make a tad prettier particularly handling weapons
+--TODO If value == 0 then dont save ( Save a little on info.json )
+--TODO Make a proper debugging
+--TODO Fix bottimes and playertimes tables need to be table of tables playertime = { { players=5,time=239, }, { players=4,time=213, }, }
 local _time = os.time
 local _pcall  = pcall
 local _pairs = pairs
 local tostring = tostring
 local tonumber = tonumber
 local loadfile = loadfile
---TODO Make a tad prettier particularly handling weapons
---TODO If value == 0 then dont save ( Save a little on info.json )
---TODO Make a proper debugging
---TODO Fix bottimes and playertimes tables need to be table of tables playertime = { { players=5,time=239, }, { players=4,time=213, }, }
 local readPath     = string.gsub(et.trap_Cvar_Get("fs_basepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
 local writePath    = string.gsub(et.trap_Cvar_Get("fs_homepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
 _INFOTIME    = 2
