@@ -6,17 +6,15 @@
 --- Get JSON.lua from http://regex.info/blog/lua/json
 --- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
 --- info.json saves to fs_homepath/fs_game/info.json
---- version: 0
+--- version: 1
 
 --- History
---- Version 0
----   In progress
+--- Version 1
+---   Ready for testing
 
 --- Notes
 --TODO Make a tad prettier particularly handling weapons
 --TODO If value == 0 then dont save ( Save a little on info.json )
---TODO Make a proper debugging
---TODO Fix bottimes and playertimes tables need to be table of tables playertime = { { players=5,time=239, }, { players=4,time=213, }, }
 local _time = os.time
 local _pcall  = pcall
 local _pairs = pairs
@@ -31,7 +29,7 @@ JSON         = (loadfile(readPath .. "JSON.lua"))()
 PlayerData = { }
 
 local _debuglevel   = 1
-local _debugto      = "" -- "zelly" for zelly
+local _debugto      = "" -- "zelly" for printing to clients wiht zelly in their name
 local LEVEL_NONE    = 0
 local LEVEL_INFO    = 1
 local LEVEL_WARNING = 2
@@ -169,9 +167,9 @@ local _create = function(clientNum,guid)
             selfkills                  = 0,
             worlddeaths                = 0,
         }
-        PlayerData[guid].names[#PlayerData[guid].names+1]         = _name(clientNum)
         PlayerData[guid].levelinfo[#PlayerData[guid].levelinfo+1] = { id=0, level=tonumber(et.G_shrubbot_level(clientNum)), leveler="none",levelername="none", }
         PlayerData[guid].ips[#PlayerData[guid].ips+1]             = _ip(clientNum)
+        PlayerData[guid].names[#PlayerData[guid].names+1]         = _name(clientNum)
     end
     PlayerData[guid].starttime = _time()
 end
@@ -210,6 +208,7 @@ local _playersbots = function()
     end
     return players,bots
 end
+
 local _weapon = function(guid,weaponid)
     for k=1,#PlayerData[guid].weapons do
         if ( PlayerData[guid].weapons[k].id == weaponid ) then
@@ -220,6 +219,57 @@ local _weapon = function(guid,weaponid)
     _print( "Created weapon " .. weaponid .. " in " .. guid,LEVEL_DEBUG)
     PlayerData[guid].weapons[#PlayerData[guid].weapons+1] = { id = weaponid, kills=0,deaths=0,botkills=0,botdeaths=0,teamkills=0,teamdeaths=0,worlddeaths=0,weapontime=0, }
     return PlayerData[guid].weapons[#PlayerData[guid].weapons]
+end
+
+local _addtime  = function(guid,players,bots)
+    -- Kind of a over complex way of storing this stuff,but json wont allow me to save bottime[botamount] if 1 through botamount doesnt have a value
+    -- Might find another way later, for now this is fine
+    if ( players >= 0 ) then
+        local f = false
+        for k=1,#PlayerData[guid].playertime do
+            if ( players == PlayerData[guid].playertime[k].players ) then
+                PlayerData[guid].playertime[k].time = ( PlayerData[guid].playertime[k].time + _INFOTIME )
+                f=true
+            end
+        end
+        if not f then
+            PlayerData[guid].playertime[k] = { players=players,time=_INFOTIME }
+        end
+    end
+    if ( bots >= 0 ) then
+        local f = false
+        for k=1,#PlayerData[guid].bottime do
+            if ( bots == PlayerData[guid].bottime[k].bots ) then
+                PlayerData[guid].bottime[k].time = ( PlayerData[guid].bottime[k].time + _INFOTIME )
+                f=true
+            end
+        end
+        if not f then
+            PlayerData[guid].bottime[k] = { bots=bots,time=_INFOTIME }
+        end
+    end
+end
+
+local _addipname = function(clientNum,guid)
+    local name = et.Q_CleanStr(_name(clientNum))
+    local ip   = _ip(clientNum)
+    local f    = false
+    local ff   = false
+    for k=1,#PlayerData[guid].ips do
+        if ( PlayerData[guid].ips[k] == ip ) then
+            f = true
+        end
+    end
+    for k=1,#PlayerData[guid].names do
+        if ( PlayerData[guid].names[k] == name ) then
+            ff = true
+        end
+    end
+    if not ( f ) then PlayerData[guid].ips[#PlayerData[guid].ips+1] = ip end
+    if not ( ff ) then
+        PlayerData[guid].names[#PlayerData[guid].names+1] = name
+        PlayerData[guid].lastname = name
+    end
 end
 
 local _runframe = function()
@@ -233,14 +283,12 @@ local _runframe = function()
             if ( PlayerData[guid].starttime == nil ) then PlayerData[guid].starttime = curtime end
             local deltatime = ( curtime - PlayerData[guid].starttime )
             if ( deltatime >= _INFOTIME ) then
+                _addipname(clientNum,guid)
                 local team = _entget(clientNum,"sess.sessionTeam","number")
                 if ( team == 1 ) or ( team == 2 ) then
-                    if ( PlayerData[guid].playertime[players] == nil ) then PlayerData[guid].playertime[players] = 0 end
-                    if ( PlayerData[guid].bottime[bots] == nil ) then PlayerData[guid].bottime[bots] = 0 end
-                    PlayerData[guid].playertime[players] = ( PlayerData[guid].playertime[players] + _INFOTIME )
-                    PlayerData[guid].bottime[bots] = ( PlayerData[guid].bottime[bots] + _INFOTIME )
                     local weapon = _weapon(guid,_entget(clientNum,"s.weapon","number"))
                     weapon.weapontime = ( weapon.weapontime + _INFOTIME )
+                    _addtime(guid,players,bots)
                 end
                 if ( team == 2 ) then
                     PlayerData[guid].alliestime = ( PlayerData[guid].alliestime + _INFOTIME )
@@ -303,7 +351,8 @@ function et_ShutdownGame(restart)
     _print("gamestate: " .. tostring(et.trap_Cvar_Get( "gamestate" )),LEVEL_DEBUG)
     if ( gamestate == 2 or gamestate == -1 ) then
         local curtime = _time()
-        for _,player in _pairs(PlayerData) do
+        for guid,player in _pairs(PlayerData) do
+            if ( string.len(guid) ~= 32 ) then player == nil end
             if ( player.starttime ~= nil ) then
                 player.maptimes[#player.maptimes+1] = ( curtime - player.starttime )
                 local average = 0
