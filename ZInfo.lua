@@ -6,9 +6,11 @@
 --- Get JSON.lua from http://regex.info/blog/lua/json
 --- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
 --- info.json saves to fs_homepath/fs_game/info.json
---- version: 1
+--- version: 2
 
 --- History
+--- Version 2
+---   Fixed startup errors should run now
 --- Version 1
 ---   Ready for testing
 
@@ -233,7 +235,7 @@ local _addtime  = function(guid,players,bots)
             end
         end
         if not f then
-            PlayerData[guid].playertime[k] = { players=players,time=_INFOTIME }
+            PlayerData[guid].playertime[#PlayerData[guid].playertime+1] = { players=players,time=_INFOTIME }
         end
     end
     if ( bots >= 0 ) then
@@ -245,7 +247,7 @@ local _addtime  = function(guid,players,bots)
             end
         end
         if not f then
-            PlayerData[guid].bottime[k] = { bots=bots,time=_INFOTIME }
+            PlayerData[guid].bottime[#PlayerData[guid].bottime+1] = { bots=bots,time=_INFOTIME }
         end
     end
 end
@@ -342,29 +344,25 @@ end
 
 function et_InitGame(levelTime, randomSeed, restart)
     et.RegisterModname ( "Zelly Info" )
-    if ( _isgame() ) then
-        _read()
-    end
+    _read()
 end
 
 function et_ShutdownGame(restart)
     _print("gamestate: " .. tostring(et.trap_Cvar_Get( "gamestate" )),LEVEL_DEBUG)
-    if ( gamestate == 2 or gamestate == -1 ) then
-        local curtime = _time()
-        for guid,player in _pairs(PlayerData) do
-            if ( string.len(guid) ~= 32 ) then player == nil end
-            if ( player.starttime ~= nil ) then
-                player.maptimes[#player.maptimes+1] = ( curtime - player.starttime )
-                local average = 0
-                for k=1,#player.maptimes do
-                    average = average + player.maptimes[k]
-                end
-                player.averagemaptime = ( average / #player.maptimes )
-                player.starttime = nil
+    local curtime = _time()
+    for guid,player in _pairs(PlayerData) do
+        if ( string.len(guid) ~= 32 ) then player = nil end
+        if ( player.starttime ~= nil ) then
+            player.maptimes[#player.maptimes+1] = ( curtime - player.starttime )
+            local average = 0
+            for k=1,#player.maptimes do
+                average = average + player.maptimes[k]
             end
+            player.averagemaptime = ( average / #player.maptimes )
+            player.starttime = nil
         end
-        _write()
     end
+    _write()
 end
 
 function et_ClientBegin(clientNum)
