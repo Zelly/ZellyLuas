@@ -2,7 +2,11 @@ ZellyLuas
 =========
   
 Luas created by zelly.  
-  
+My main project is a private repository over on bitbucket  
+https://bitbucket.org/zelly/lua-enhanced-server-mod/wiki/Home  
+I am looking for people to work on this project with me  
+I may end up making it public once I get it in a state that is representable  
+These are little side projects mainly aimed towards non-shrubbot servers  
   
 Zelly XpSave Lua
 ================
