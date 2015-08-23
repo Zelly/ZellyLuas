@@ -1,13 +1,20 @@
 -- Zelly's JSON Legacy Mod XpSave Lua
--- Xfire : anewxfireaccount
+-- Evolve : ZellyEllyBear
+-- Steam  : ZellyElly
+-- Mygamintalk.com : Zelly
+-- Etlegacy : Zelly
 -- Made for jemstar <3
--- Feel free to report problems to my xfire
+-- Feel free to report problems to me
 -- https://github.com/Zelly/ZellyLuas for latest version
 -- Get JSON.lua from http://regex.info/blog/lua/json
 -- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
 -- xpsave.json saves to fs_homepath/fs_game/xpsave.json
--- version: 6
+-- To find fs_basepath , fs_homepath , and fs_game type them in the server console or rcon
+-- version: 7
 
+-- Version 7
+--  Added option to disable xpsave for bots
+--  Added option for max xp
 -- Version 6
 --  Fixed everything that i added in version 4 and 5 :P
 -- Version 5.1:
@@ -19,11 +26,13 @@
 -- BUG: Version 3 and below Xp will not save on shutdown
 
 
+local _maxXP         = -1    -- Xpsave will be reset when _maxXP is reached ( Set to -1 or below for infinite )
 local _saveTime      = 30    -- Seconds in between each runframe save
 local _printDebug    = false -- If you want to print to console
 local _logPrintDebug = false -- If you want it to log to server log ( Requires _printDebug = true )
-local _logDebug      = true -- If you want it to log to xpsave.log
-local _logStream     = true -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires _logDebug = true )
+local _logDebug      = true  -- If you want it to log to xpsave.log
+local _logStream     = true  -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires _logDebug = true )
+local _xpsaveForBots = true  -- If you want to save xp for bots
 
 local readPath     = string.gsub(et.trap_Cvar_Get("fs_basepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
 local writePath    = string.gsub(et.trap_Cvar_Get("fs_homepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
@@ -106,7 +115,7 @@ local _validateGUID = function (clientNum, guid)
         et.trap_SendServerCommand (clientNum, "chat \"^1WARNING: ^7Your XP won't be saved because you have an invalid cl_guid.\n\"")
         return false
     end
-    if ( string.sub(guid, 1, 7) == "OMNIBOT" ) then return false end -- Dont save Bots XP
+    if not _xpsaveForBots and string.sub(guid, 1, 7) == "OMNIBOT" then return false end -- Dont save Bots XP
     _print("_validateGUID Client(" .. tostring(clientNum) .. ") has a valid guid(" .. tostring(guid) .. ")")
     return true
 end
@@ -118,6 +127,18 @@ local _setSkillPoints = function(clientNum,guid,skillNum)
         return
     end
     XP[guid].skills[skillNum+1] = sp
+end
+
+local _totalxp = function( skillTable )
+    if not skillTable or not next(skillTable) then return 0 end
+    
+    local total = 0
+    
+    for k=BATTLESENSE,COVERTOPS do
+        total = skillTable[k] + total
+    end
+    
+    return total
 end
 
 local _saveXp = function(clientNum)
@@ -133,6 +154,13 @@ local _saveXp = function(clientNum)
     if ( XP[GUID].skills == nil or next(XP[GUID].skills) == nil ) then -- Check Separately just in-case for some reason this doesn't exist.
         XP[GUID].skills = { }
     end
+    
+    if _maxXP > -1 and _totalxp(XP[GUID]) >= _maxXP then
+        for k=BATTLESENSE,COVERTOPS do
+            XP[GUID][k] = 0
+        end
+    end
+    
     for k=BATTLESENSE,COVERTOPS do
         _setSkillPoints(clientNum,GUID,k)
     end
