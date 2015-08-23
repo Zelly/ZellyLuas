@@ -106,6 +106,7 @@ local _validateGUID = function (clientNum, guid)
         et.trap_SendServerCommand (clientNum, "chat \"^1WARNING: ^7Your XP won't be saved because you have an invalid cl_guid.\n\"")
         return false
     end
+    if ( string.sub(guid, 1, 7) == "OMNIBOT" ) then return false end -- Dont save Bots XP
     _print("_validateGUID Client(" .. tostring(clientNum) .. ") has a valid guid(" .. tostring(guid) .. ")")
     return true
 end
