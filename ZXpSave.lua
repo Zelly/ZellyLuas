@@ -10,8 +10,10 @@
 -- Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
 -- xpsave.json saves to fs_homepath/fs_game/xpsave.json
 -- To find fs_basepath , fs_homepath , and fs_game type them in the server console or rcon
--- version: 7
+-- version: 7.1
 
+-- Version: 7.1
+--  Fixed G_XP_Set float error
 -- Version 7
 --  Added option to disable xpsave for bots
 --  Added option for max xp
@@ -141,6 +143,16 @@ local _totalxp = function( skillTable )
     return total
 end
 
+local _int = function( floatvalue , floor )
+    if not floatvalue then return nil end
+    if floor then floatvalue = math.floor(floatvalue) end
+    local intvalue,decimal = math.modf( floatvalue )
+    if decimal >= 0.5 then
+        intvalue = intvalue + 1
+    end
+    return math.tointeger(intvalue)
+end
+
 local _saveXp = function(clientNum)
     --local name = et.Info_ValueForKey( et.trap_GetUserinfo( clientNum ), "name" )
     --GUID = string.upper(GUID)
@@ -190,13 +202,13 @@ local _loadXp = function(clientNum)
         end
     end
     _print("_loadXp (" .. tostring(GUID) .. ") " .. tostring(XP[GUID].skills[BATTLESENSE+1]) .. " " .. tostring(XP[GUID].skills[ENGINEERING+1]) .. " " .. tostring(XP[GUID].skills[MEDIC+1]) .. " " .. tostring(XP[GUID].skills[FIELDOPS+1]) .. " " .. tostring(XP[GUID].skills[LIGHTWEAPONS+1]) .. " " .. tostring(XP[GUID].skills[HEAVYWEAPONS+1]) .. " " .. tostring(XP[GUID].skills[COVERTOPS+1]) )
-    et.G_XP_Set( clientNum, XP[GUID].skills[BATTLESENSE+1]  , BATTLESENSE  , 0)
-    et.G_XP_Set( clientNum, XP[GUID].skills[ENGINEERING+1]  , ENGINEERING  , 0)
-    et.G_XP_Set( clientNum, XP[GUID].skills[MEDIC+1]        , MEDIC        , 0)
-    et.G_XP_Set( clientNum, XP[GUID].skills[FIELDOPS+1]     , FIELDOPS     , 0)
-    et.G_XP_Set( clientNum, XP[GUID].skills[LIGHTWEAPONS+1] , LIGHTWEAPONS , 0)
-    et.G_XP_Set( clientNum, XP[GUID].skills[HEAVYWEAPONS+1] , HEAVYWEAPONS , 0)
-    et.G_XP_Set( clientNum, XP[GUID].skills[COVERTOPS+1]    , COVERTOPS    , 0)
+    et.G_XP_Set( clientNum, int(XP[GUID].skills[BATTLESENSE+1])  , BATTLESENSE  , 0)
+    et.G_XP_Set( clientNum, int(XP[GUID].skills[ENGINEERING+1])  , ENGINEERING  , 0)
+    et.G_XP_Set( clientNum, int(XP[GUID].skills[MEDIC+1])        , MEDIC        , 0)
+    et.G_XP_Set( clientNum, int(XP[GUID].skills[FIELDOPS+1])     , FIELDOPS     , 0)
+    et.G_XP_Set( clientNum, int(XP[GUID].skills[LIGHTWEAPONS+1]) , LIGHTWEAPONS , 0)
+    et.G_XP_Set( clientNum, int(XP[GUID].skills[HEAVYWEAPONS+1]) , HEAVYWEAPONS , 0)
+    et.G_XP_Set( clientNum, int(XP[GUID].skills[COVERTOPS+1])    , COVERTOPS    , 0)
     if ( XP[GUID].referee ) then
         _print("_loadXp Client("..tostring(clientNum)..") granted referee status")
         et.gentity_set(clientNum,"sess.referee",1)
