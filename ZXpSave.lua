@@ -28,7 +28,7 @@ Version 7.1
     FIX:    Issue of sess.skillpoints being stored as decimal values instead of whole numbers
             this caused et.G_XP_set to only grant the first stat BATTLESENSE -- float error resolved
     UPD:    Cleaned up code for efficiency (IMO)
-    ADD:    Server XP reset timer using server admin variable XP_RESET_FLAG -- In Progress
+    ADD:    Server Wide XP reset using server admin variable XP_RESET_INTERVAL
     ADD:    Reset XP command !resetxp
     ADD:    Load XP command !loadxp
     ADD:    Advertise players command !players
@@ -49,42 +49,69 @@ Version 5:
 --[[
         USER EDITABLE VARIABLES - Server Admin Section
 --]]
-local XP_RESET_FLAG     = 4     -- Number in weeks to do a Server Wide XP Reset (UNDER CONSTRUCTION)
+-- Examples:
+------
+-- XP_RESET_INTERVAL = "5d"  - 5 days
+-- XP_RESET_INTERVAL = "36h" - 36 hours
+-- XP_RESET_INTERVAL = "2w"  - 2 weeks
+local XP_RESET_INTERVAL     = "30d"
 
-local _saveTime         = 30    -- Seconds in between each runframe save
-local _printDebug       = false -- If you want to print to console
-local _logPrintDebug    = false -- If you want it to log to server log ( Requires _printDebug = true )
-local _logDebug         = true  -- If you want it to log to xpsave.log
-local _logStream        = true  -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires _logDebug = true )
-local _xpSaveForBots    = false -- If you want to save xp for bots
+local _saveTime             = 30    -- Seconds in between each runframe save
+local _printDebug           = false -- If you want to print to console
+local _logPrintDebug        = false -- If you want it to log to server log ( Requires _printDebug = true )
+local _logDebug             = true  -- If you want it to log to xpsave.log
+local _logStream            = true  -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires _logDebug = true )
+local _xpSaveForBots        = false -- If you want to save xp for bots
 
 --[[
         DO NOT MODIFY REMAINDER OF SCRIPT
 --]]
-local readPath          = string.gsub(et.trap_Cvar_Get("fs_basepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
-local writePath         = string.gsub(et.trap_Cvar_Get("fs_homepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
+local readPath              = string.gsub(et.trap_Cvar_Get("fs_basepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
+local writePath             = string.gsub(et.trap_Cvar_Get("fs_homepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
 
-local JSON              = (loadfile(readPath .. "JSON.lua"))()
+local JSON                  = (loadfile(readPath .. "JSON.lua"))()
 
-local XP_FILE           = writePath .. "xpsave.json" -- If you want you can replace writePath with readPath here I think
-local XP_LOGFILE        = writePath .. "xpsave.log"
+local XP_FILE               = writePath .. "xpsave.json" -- If you want you can replace writePath with readPath here I think
+local XP_LOGFILE            = writePath .. "xpsave.log"
+local XP_RESET_COUNTDOWN    = 900 -- ( 60 * 15 ) 15 minutes before reset
+local XP_END_ROUND_SAVED    = false
+local XP_SERVER_RESET       = false
 
-local BATTLESENSE       = 0
-local ENGINEERING       = 1
-local MEDIC             = 2
-local FIELDOPS          = 3
-local LIGHTWEAPONS      = 4
-local HEAVYWEAPONS      = 5
-local COVERTOPS         = 6
+local BATTLESENSE           = 0
+local ENGINEERING           = 1
+local MEDIC                 = 2
+local FIELDOPS              = 3
+local LIGHTWEAPONS          = 4
+local HEAVYWEAPONS          = 5
+local COVERTOPS             = 6
+
+local XP                    = { }
+local LogFile               = { }
 
 --[[
-        DATE CONSTANTS -- UNDER CONSTRUCTION
+        DATE CONSTANTS
 --]]
-local DATE_EPOCH        = os.time()
-local WEEK              = 604800   -- ( 60 * 60 * 24 * 7 )
-
-local XP                = { }
-local LogFile           = { }
+local DATE_EPOCH            -- Set later
+local NEXT_RESET            -- Set later
+local SEC_TIMER             -- Set later
+local HOUR                  = 3600      -- ( 60 * 60 )
+local DAY                   = 86400     -- ( 60 * 60 * 24 )
+local WEEK                  = 604800    -- ( 60 * 60 * 24 * 7 )
+-- determine XP_RESET_INTERVAL
+local resetIntervalNum = string.gsub(XP_RESET_INTERVAL, "[%a%c%p%s]", "")
+-- multiply by HOUR
+if ( string.match(XP_RESET_INTERVAL, "[hH]") ) then
+    XP_RESET_INTERVAL = (HOUR * tonumber(resetIntervalNum))
+-- multiply by DAY
+elseif ( string.match(XP_RESET_INTERVAL, "[dD]") ) then
+    XP_RESET_INTERVAL = (DAY * tonumber(resetIntervalNum))
+-- multiply by WEEK
+elseif ( string.match(XP_RESET_INTERVAL, "[wW]") ) then
+    XP_RESET_INTERVAL = (WEEK * tonumber(resetIntervalNum))
+-- Pattern incorrectly set, default to 30 days
+else
+    XP_RESET_INTERVAL = (DAY * 30)
+end
 
 --[[
         SCRIPT FUNCTIONS
@@ -166,11 +193,11 @@ function _validateGUID (clientNum, guid)
     return true
 end
 
--- This function was added by Klassifyed to identify OMNIBOT GUIDs
+-- identify OMNIBOT GUIDs
 function _trackOmniBotXP (clientNum)
     local guid = _getGUID(clientNum)
     -- Verify if server admin wants to track XP for OmniBots
-    if string.match( tostring(guid), "OMNIBOT" ) then
+    if ( string.match(tostring(guid), "OMNIBOT") ) then
         return _xpSaveForBots -- server admin editable boolean variable at top of script
     end
     return true
@@ -218,7 +245,7 @@ function _saveXp (clientNum)
             XP[guid].referee = false
         end
         -- Update last seen for player
-        XP[guid].lastseen = os.date("%x %X")
+        XP[guid].lastseen = os.time()
     end
 end
 
@@ -297,6 +324,8 @@ function _gamestate ()
     elseif ( gs == 2 ) then
         _laststate = 2
         return "warmup"
+    elseif ( gs == 3 ) then
+        return "round end"
     else
         return tostring(gs)
     end
@@ -335,17 +364,104 @@ function _advPlayers (clientNum)
     _message("print", "\n^3 " .. playerCount .. " ^7total players\n", clientNum)
 end
 
---[[
-        _getNextXpReset is UNDER CONSTRUCTION
---]]
 function _getNextXpReset ()
-    if     ( XP_RESET_FLAG == 0 ) then -- Reset everyday
-    elseif ( XP_RESET_FLAG == 1 ) then -- Reset every Tuesday
-    elseif ( XP_RESET_FLAG == 2 ) then -- Reset every month on the 1st
-    elseif ( XP_RESET_FLAG == 3 ) then -- Reset every year on Janurary 1st
-        --if ( XP["SERVER_XP_RESET"].nextresetdate == nil ) or ( DATE_EPOCH > XP["SERVER_XP_RESET"].nextresetdate ) then
-            --XP["SERVER_XP_RESET"].nextresetdate = CUR_DATE_TIME-- + YEAR
-        --end
+    DATE_EPOCH = os.time()
+    XP["XP_SERVER_RESET"].nextreset = DATE_EPOCH + XP_RESET_INTERVAL
+end
+
+function _resetServerXp ()
+    _print("_resetServerXp Deleting xpsave.json and resetting all connected player xp to zero")
+   local XPFileObject = io.open(XP_FILE, "r")
+    if ( XPFileObject ~= nil ) then
+        XPFileObject:close()
+        os.remove(XP_FILE)
+        _print("_resetServerXp XP File(" .. XP_FILE .. ") deleted")
+    end
+    for clientNum=0, tonumber(et.trap_Cvar_Get("sv_maxclients"))-1 do
+        local connected = et.gentity_get(clientNum, "pers.connected")
+        -- 0 = Disconnected
+        -- 1 = Connecting  -- Might want to do 1 too which is 'currently connecting' but im not sure if their xp is readable then so maybe not...
+        -- 2 = Connected
+        if ( connected == 2 ) and ( _trackOmniBotXP(clientNum) ) then
+            local guid = _getGUID(clientNum)
+            if ( _validateGUID(clientNum, guid) ) then
+                _print("_resetServerXp Client(" .. tostring(clientNum) .. ") guid(" .. tostring(guid) .. ")")
+                for k=BATTLESENSE+1, COVERTOPS+1 do
+                    XP[guid].skills[k] = 0
+                end
+                _print("_resetServerXp (" .. tostring(guid) .. ") " .. tostring(XP[guid].skills[BATTLESENSE+1]) .. " " .. tostring(XP[guid].skills[ENGINEERING+1]) .. " " .. tostring(XP[guid].skills[MEDIC+1]) .. " " .. tostring(XP[guid].skills[FIELDOPS+1]) .. " " .. tostring(XP[guid].skills[LIGHTWEAPONS+1]) .. " " .. tostring(XP[guid].skills[HEAVYWEAPONS+1]) .. " " .. tostring(XP[guid].skills[COVERTOPS+1]) )
+                et.G_ResetXP(clientNum)
+            end
+        end
+    end
+    _getNextXpReset()
+    _xpServerReset = true
+    _message("print", "^3[SERVER XP RESET] - Complete")
+    _message("cp", "^3[SERVER XP RESET] - Complete")
+end
+
+-- countdown timer function from 15 minutes before server xp reset
+function _checkServerXpReset ()
+    DATE_EPOCH = os.time()
+    NEXT_RESET = XP["XP_SERVER_RESET"].nextreset
+    
+    if ( NEXT_RESET ~= nil ) and ( DATE_EPOCH >= (NEXT_RESET - 900) ) then
+        -- Check XP Server Reset 15 minute mark
+        if ( DATE_EPOCH == (NEXT_RESET - 900) ) then
+            _message("print", "^3[SERVER XP RESET] - 15:00")
+            _message("cp", "^3[SERVER XP RESET] - 15:00")
+        -- Check XP Server Reset 10 minute mark
+        elseif ( DATE_EPOCH == (NEXT_RESET - 600) ) then
+            _message("print", "^3[SERVER XP RESET] - 10:00")
+            _message("cp", "^3[SERVER XP RESET] - 10:00")
+        -- Check XP Server Reset 5 minute mark
+        elseif ( DATE_EPOCH == (NEXT_RESET - 300) ) then
+            _message("print", "^3[SERVER XP RESET] - 05:00")
+            _message("cp", "^3[SERVER XP RESET] - 05:00")
+        -- Check XP Server Reset 4 minute mark
+        elseif ( DATE_EPOCH == (NEXT_RESET - 240) ) then
+            _message("print", "^3[SERVER XP RESET] - 04:00")
+            _message("cp", "^3[SERVER XP RESET] - 04:00")
+        -- Check XP Server Reset 3 minute mark
+        elseif ( DATE_EPOCH == (NEXT_RESET - 180) ) then
+            _message("print", "^3[SERVER XP RESET] - 03:00")
+            _message("cp", "^3[SERVER XP RESET] - 03:00")
+        -- Check XP Server Reset 2 minute mark
+        elseif ( DATE_EPOCH == (NEXT_RESET - 120) ) then
+            _message("print", "^3[SERVER XP RESET] - 02:00")
+            _message("cp", "^3[SERVER XP RESET] - 02:00")
+        -- Check XP Server Reset 1 minute mark
+        elseif ( DATE_EPOCH == (NEXT_RESET - 60) ) then
+            _message("print", "^3[SERVER XP RESET] - 01:00")
+            _message("cp", "^3[SERVER XP RESET] - 01:00")
+        -- Check XP Server Reset 45 second mark
+        elseif ( DATE_EPOCH == (NEXT_RESET - 45) ) then
+            _message("print", "^3[SERVER XP RESET] - 00:45")
+            _message("cp", "^3[SERVER XP RESET] - 00:45")
+        -- Check XP Server Reset 30 second mark
+        elseif ( DATE_EPOCH == (NEXT_RESET - 30) ) then
+            _message("print", "^3[SERVER XP RESET] - 00:30")
+            _message("cp", "^3[SERVER XP RESET] - 00:30")
+        -- Check XP Server Reset 15 second mark
+        elseif ( DATE_EPOCH == (NEXT_RESET - 15) ) then
+            _message("print", "^3[SERVER XP RESET] - 00:15")
+            _message("cp", "^3[SERVER XP RESET] - 00:15")
+            SEC_TIMER = 14
+        -- Reset Server XP
+        elseif ( DATE_EPOCH >= NEXT_RESET ) then
+            SEC_TIMER = nil
+            _resetServerXp()
+        -- Check XP Server Reset remaining seconds
+        elseif ( SEC_TIMER ~= nil ) then
+            if ( SEC_TIMER >= 10 ) then
+                secs_left_text = "^3[SERVER XP RESET] - 00:" .. SEC_TIMER
+            else
+                secs_left_text = "^3[SERVER XP RESET] - 00:0" .. SEC_TIMER
+            end
+            _message("print", secs_left_text)
+            _message("cp", secs_left_text)
+            SEC_TIMER = SEC_TIMER - 1
+        end
     end
 end
 
@@ -355,11 +471,10 @@ function et_InitGame (levelTime, randomSeed, restart)
     _print("Load Path : " .. tostring(readPath))
     _print("Write Path : " .. tostring(writePath))
     XP = _read()
-    if ( XP["SERVER_XP_RESET"] == nil ) or ( next(XP["SERVER_XP_RESET"]) == nil ) then
-        XP["SERVER_XP_RESET"] = { }
-        XP["SERVER_XP_RESET"].lastreset = "never"
+    if ( XP["XP_SERVER_RESET"] == nil ) or ( next(XP["XP_SERVER_RESET"]) == nil ) then
+        XP["XP_SERVER_RESET"] = { }
+        _getNextXpReset()
     end
-    _getNextXpReset()
 end
 
 function et_ShutdownGame (restart)
@@ -370,9 +485,19 @@ function et_ShutdownGame (restart)
 end
 
 function et_RunFrame (levelTime)
-    if ( (levelTime % (_saveTime * 1000)) == 0 ) then
-        _print("et_Runframe saving all active clients")
+    if ( (levelTime % 1000) == 0 ) and not ( _xpServerReset ) then
+        _checkServerXpReset()
+    end
+
+    if ( _gamestate() ~= "round end" ) then -- gamestate 3 is Timlimit hit or objectives complete
+        if ( (levelTime % (_saveTime * 1000)) == 0 ) then
+            _print("et_Runframe saving all active clients")
+            _saveXpAll()
+        end
+    elseif ( _gamestate() == "round end" ) and not ( XP_END_ROUND_SAVED ) then
+        _print("et_Runframe round ended saving all active clients")
         _saveXpAll()
+        XP_END_ROUND_SAVED = true
     end
 end
 
@@ -402,17 +527,13 @@ function et_ClientCommand (clientNum, command)
         elseif ( Arg1 == "!players" ) then
             _advPlayers(clientNum)
             return 1
-        elseif ( Arg1 == "!gs" ) then
-            _message("print", _gamestate(), clientNum)
-            _message("cp", _gamestate(), clientNum)
-            return 1
         end
     end
 end
 
 function et_ClientConnect (clientNum)
     if ( _trackOmniBotXP(clientNum) ) then
-        _print("et_ClientBegin Client(" .. clientNum .. ") connected, loading their xp")
+        _print("et_ClientConnect Client(" .. clientNum .. ") connected, loading their xp")
         _loadXp(clientNum)
     end
 end
