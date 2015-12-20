@@ -386,18 +386,25 @@ function et_ClientCommand (clientNum, command)
             return 1
         elseif ( Arg1 == "!loadxp" ) then
             _loadXp(clientNum)
+            _message("print", "^oLoadXp: ^7Your xp has been loaded", clientNum)
             _message("cp", "^oLoadXp: ^7Your xp has been loaded", clientNum)
             return 1
         elseif ( Arg1 == "!savexp" ) then
             _saveXp(clientNum)
+            _message("print", "^oSaveXp: ^7Your xp has been saved", clientNum)
             _message("cp", "^oSaveXp: ^7Your xp has been saved", clientNum)
             return 1
         elseif ( Arg1 == "!resetxp" ) then
             _resetXp(clientNum)
+            _message("print", "^oResetXp: ^7Your xp has been reset", clientNum)
             _message("cp", "^oResetXp: ^7Your xp has been reset", clientNum)
             return 1
         elseif ( Arg1 == "!players" ) then
             _advPlayers(clientNum)
+            return 1
+        elseif ( Arg1 == "!gs" ) then
+            _message("print", _gamestate(), clientNum)
+            _message("cp", _gamestate(), clientNum)
             return 1
         end
     end
