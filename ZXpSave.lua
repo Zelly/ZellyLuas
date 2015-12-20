@@ -1,12 +1,12 @@
 --[[
-Edited by Idle Movement Inc JSON ET:Legacy XpSave Lua https://github.com/klassifyed/ZellyLuas
+Modified by Klassifyed Lua https://github.com/klassifyed/ZellyLuas
 Forked from Zelly's JSON Legacy Mod XpSave Lua https://github.com/Zelly/ZellyLuas
 Get JSON.lua from http://regex.info/blog/lua/json
 Looks for JSON.lua in fs_homepath/JSONPath/JSON.lua
 xpsave.json saves to fs_homepath/fs_game/xpsave.json
 Lua module version 6.1
 Compatiable with ET:Legacy 2.74
-Edited in Sublime Text 3 - Tab Size: 2
+Modified in Sublime Text 3 - Tab Size: 2
 --]]
 local scriptName = "Zelly's JSON Legacy Mod XpSave Lua"
 local version = "6.1"
@@ -34,9 +34,7 @@ local JSON_PATH				= "etmain/lua" -- Path relative to fs_homepath, no preceding 
 local JSON_FILE				= "JSON.lua"
 
 local XP_RESET_FLAG		= 4			-- Number in weeks to do a Server Wide XP Reset
-local _xpOmniBot			= false	-- If you want to XpSave Omni-Bots
-local _xpMax					= 2500	-- Max XP a player can have before their XP is reset
-local _xpSaveMaxAge		= "1w"	-- The number of seconds that must pass without a connection from this player before their data is deleted
+local XP_OMNI_BOT			= false	-- If you want to XpSave Omni-Bots
 
 local _saveTime				= 30		-- Seconds in between each runframe save
 local _printDebug			= false	-- If you want to print to console
@@ -61,34 +59,11 @@ local LIGHTWEAPONS		= 4
 local HEAVYWEAPONS		= 5
 local COVERTOPS				= 6
 
-local skillName = {}
-skillName[BATTLESENSE]	= "Battlesense"
-skillName[ENGINEERING]	= "Engineering"
-skillName[MEDIC]				= "Medic"
-skillName[FIELDOPS]			= "Field Ops"
-skillName[LIGHTWEAPONS]	= "Light Weapons"
-skillName[HEAVYWEAPONS]	= "Heavy Weapons"
-skillName[COVERTOPS]		= "Covert Ops"
-
--- Date Constants
+--[[
+			DATE CONSTANTS
+--]]
 local DATE_EPOCH = os.time()
 local WEEK			 = 604800	-- ( 60 * 60 * 24 * 7 )
-local TZOFFSET	 = "-0400" -- ( AST )
-
-local imi_weekdays = {
-	[0]="Sunday",[1]="Monday",[2]="Tuesday",[3]="Wednesday",[4]="Thursday",[5]="Friday",[6]="Saturday",
-	[7]="Sun",[8]="Mon",[9]="Tue",[10]="Wed",[11]="Thu",[12]="Fri",[13]="Sat",
-}
-local imi_months = {
-	[00]="January", [01]="February", [02]="March",
-	[03]="April",   [04]="May",      [05]="June",
-	[06]="July",    [07]="August",   [08]="September",
-	[09]="October", [10]="November", [11]="December",
-	[12]="Jan", [13]="Feb", [14]="Mar",
-	[15]="Apr", [16]="May", [17]="Jun",
-	[18]="Jul", [19]="Aug", [20]="Sep",
-	[21]="Oct", [22]="Nov", [23]="Dec",
-}
 
 local XP      = {}
 local LogFile = {}
@@ -204,7 +179,7 @@ function _trackOmniBotXP (clientNum)
 	local guid = _getGUID(clientNum)
 	-- Verify if server admin wants to track XP for OmniBots
 	if string.match( tostring(guid), "OMNIBOT" ) then
-		return _xpOmniBot -- server admin editable boolean variable at top of script
+		return XP_OMNI_BOT -- server admin editable boolean variable at top of script
 	end
 	return true
 end
