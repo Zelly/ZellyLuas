@@ -1,9 +1,8 @@
 --[[
-Modified by Klassifyed
-Forked from Zelly's JSON Legacy Mod XpSave Lua
+Zelly's JSON Legacy Mod XpSave Lua
 Evolve : ZellyEllyBear
 Steam  : ZellyElly
-Mygamintalk.com : Zelly
+Mygamingtalk.com : Zelly
 Etlegacy : Zelly
 Made for jemstar <3
 Feel free to report problems to me
@@ -12,64 +11,85 @@ Get JSON.lua from http://regex.info/blog/lua/json
 Looks for JSON.lua in fs_basepath/fs_game/JSON.lua
 xpsave.json saves to fs_homepath/fs_game/xpsave.json
 To find fs_basepath , fs_homepath , and fs_game type them in the server console or rcon
-Lua module version 7.2
-Compatiable with ET:Legacy 2.74
-Modified in Sublime Text 3 - Tab Size: 2
---]]
-local scriptName = "Zelly's JSON Legacy Mod XpSave Lua"
-local version = "7.1"
+Contributors:
+ https://github.com/Zelly
+ https://github.com/klassifyed
+version: 8.1
 
---[[
-Version 7.1
-    FIX:    Skills lost after restart of map or starting match but XP remained correct,
-            selecting a class and joining game cause skills to appear, and on map,
-            restart, selecting a new class caused skills to appear, moving _loadXp
-            to function et_ClientConnect corrected the issue
-    FIX:    Issue of sess.skillpoints being stored as decimal values instead of whole numbers
-            this caused et.G_XP_set to only grant the first stat BATTLESENSE -- float error resolved
-    UPD:    Cleaned up code for efficiency (IMO)
-    ADD:    Server Wide XP reset using server admin variable XP_RESET_INTERVAL
-    ADD:    Reset XP command !resetxp
-    ADD:    Load XP command !loadxp
-    ADD:    Advertise players command !players
+Dev notes:
+ MAKE SURE THE XP VALUES ARE COMPUTED WITH FLOAT VALUES NOT INTS
+   Lua 5.3 float values and int's can't really interact because of the whole 64 bit integer
+   We need to use float values because g_construcibleengineersharing(Don't recall actual cvar)
+ Keep as much stuff local as possible
+ I use tostring() a lot in the print statements. The reason for this is, instead of using %d for example, is because
+   if the value happens tobe nil for some reason it will print "nil" instead of an error.
+ 
+
+Command List:
+!loadxp   - Loads your xp from file
+!savexp   - Saves your xp to file
+!resetxp  - Resets your xp
+!players  - List all active clients
+
+!finger <target> - Provides info on a client, if you have referee status
+
+
+Version: 8.1
+ Removed unecessary underscores, since everything is local
+ Added bit more commenting
+ Updated functions to be local again
+ Updated XP_RESET_INTERVAL default to unlimited time
+ Updated server wide reset function to not delete the entire file, but just reset it in memory and it will overwrite when a save comes around.
+Version: 8
+ Merged pull request from https://github.com/klassifyed
+ Fixed skills lost after map restart
+ Fixed Issue of G_XP_set float value
+ Added server wide xp reset
+ Added resetxp command
+ Added loadxp command
+ Added players command
+Version: 7.1
+ Fixed G_XP_Set float error
 Version 7
-    ADD:    option to disable xpsave for bots
-    ADD:    option for max xp
+  Added option to disable xpsave for bots
+  Added option for max xp
 Version 6
-    FIX:    everything that i added in version 4 and 5 :P
+ Fixed everything that i added in version 4 and 5 :P
 Version 5.1:
-    FIX:    _saveLog nil i think
+ Fixed _saveLog nil i think
 Version 5: 
-    FIX:    Client saving 0 when client crash
-    ADD:    Seperate log saving
-    ADD:    Version 4 added a _saveAllXp function that runs every _saveTime seconds
-    BUG:    Version 3 and below Xp will not save on shutdown
+ Fixed: Client saving 0 when client crash
+ Added: Seperate log saving
+Version 4:
+ Added _saveAllXp function that runs every _saveTime seconds
+Version 1.0-3.0:
+ Xp will not save on shutdown
 --]]
+local MOD_NAME      = "Zelly's JSON Legacy Mod XpSave Lua" -- Lua Module name (Shown in lua_status and various messages)
+local MOD_VERSON    = "8.1" -- Lua Module Version (Shown in lua_status and various messages)
+local MOD_SHORTNAME = "ZXPSAVE"
 
---[[
-        USER EDITABLE VARIABLES - Server Admin Section
---]]
--- Examples:
-------
+-------------------------
+---- Admin Variables ----
+-------------------------
+local saveTime              = 30    -- Seconds in between each runframe xp will save
+local printDebug            = false -- If you want to print to console
+local logPrintDebug         = false -- If you want it to log to server log ( Requires _printDebug = true )
+local logDebug              = true  -- If you want it to log to xpsave.log
+local logStream             = true  -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires _logDebug = true )
+local xpSaveForBots         = false -- If you want to save xp for bots
+local XP_RESET_INTERVAL     = "0"   -- Variable to determine when server wide xp resets
 -- XP_RESET_INTERVAL = "5d"  - 5 days
 -- XP_RESET_INTERVAL = "36h" - 36 hours
 -- XP_RESET_INTERVAL = "2w"  - 2 weeks
-local XP_RESET_INTERVAL     = "30d"
+-- XP_RESET_INTERVAL = "0"   - 0 or lower will be infinite
 
-local _saveTime             = 30    -- Seconds in between each runframe save
-local _printDebug           = false -- If you want to print to console
-local _logPrintDebug        = false -- If you want it to log to server log ( Requires _printDebug = true )
-local _logDebug             = true  -- If you want it to log to xpsave.log
-local _logStream            = true  -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires _logDebug = true )
-local _xpSaveForBots        = false -- If you want to save xp for bots
+-- Only modify what you understand.
 
---[[
-        DO NOT MODIFY REMAINDER OF SCRIPT
---]]
-local readPath              = string.gsub(et.trap_Cvar_Get("fs_basepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
+local readPath              = string.gsub(et.trap_Cvar_Get("fs_basepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/") --
 local writePath             = string.gsub(et.trap_Cvar_Get("fs_homepath") .. "/" .. et.trap_Cvar_Get("fs_game") .. "/","\\","/")
 
-local JSON                  = (loadfile(readPath .. "JSON.lua"))()
+local JSON                  = (loadfile(readPath .. "JSON.lua"))() -- JSON 
 
 local XP_FILE               = writePath .. "xpsave.json" -- If you want you can replace writePath with readPath here I think
 local XP_LOGFILE            = writePath .. "xpsave.log"
@@ -85,39 +105,39 @@ local LIGHTWEAPONS          = 4
 local HEAVYWEAPONS          = 5
 local COVERTOPS             = 6
 
+local lastState            = -1
+local xpServerReset        = false
+
 local XP                    = { }
 local LogFile               = { }
 
---[[
-        DATE CONSTANTS
---]]
+-- DATE CONSTANTS
 local DATE_EPOCH            -- Set later
 local NEXT_RESET            -- Set later
 local SEC_TIMER             -- Set later
 local HOUR                  = 3600      -- ( 60 * 60 )
 local DAY                   = 86400     -- ( 60 * 60 * 24 )
 local WEEK                  = 604800    -- ( 60 * 60 * 24 * 7 )
--- determine XP_RESET_INTERVAL
-local resetIntervalNum = string.gsub(XP_RESET_INTERVAL, "[%a%c%p%s]", "")
--- multiply by HOUR
-if ( string.match(XP_RESET_INTERVAL, "[hH]") ) then
+
+local resetIntervalNum = string.gsub(XP_RESET_INTERVAL, "[%a%c%p%s]", "") -- determine XP_RESET_INTERVAL
+
+if ( string.match(XP_RESET_INTERVAL, "[hH]") ) then -- multiply by HOUR
     XP_RESET_INTERVAL = (HOUR * tonumber(resetIntervalNum))
--- multiply by DAY
-elseif ( string.match(XP_RESET_INTERVAL, "[dD]") ) then
+elseif ( string.match(XP_RESET_INTERVAL, "[dD]") ) then -- multiply by DAY
     XP_RESET_INTERVAL = (DAY * tonumber(resetIntervalNum))
--- multiply by WEEK
-elseif ( string.match(XP_RESET_INTERVAL, "[wW]") ) then
+elseif ( string.match(XP_RESET_INTERVAL, "[wW]") ) then -- multiply by WEEK
     XP_RESET_INTERVAL = (WEEK * tonumber(resetIntervalNum))
--- Pattern incorrectly set, default to 30 days
-else
-    XP_RESET_INTERVAL = (DAY * 30)
+else -- Pattern incorrectly set, default to infinite
+    XP_RESET_INTERVAL = -1
 end
 
---[[
-        SCRIPT FUNCTIONS
---]]
-function _saveLog ()
-    if ( LogFile ~= nil ) or ( next(LogFile) ~= nil ) then
+------------------------------
+---- Lua Module functions ----
+------------------------------
+--- saveLog
+-- Saves any lines in the LogFile buffer table to XP_LOGFILE
+local saveLog = function()
+    if ( LogFile ~= nil or next(LogFile) ~= nil ) then
         local FileObject = io.open(XP_LOGFILE, "a")
         for k=1, #LogFile do
             FileObject:write(LogFile[k].."\n")
@@ -127,120 +147,148 @@ function _saveLog ()
     end
 end
 
-function _print (msg)
-    if ( msg ~= nil ) then
-        msg = et.Q_CleanStr(msg)
-        if ( string.len(msg) >= 1 ) then
-            if ( _logPrintDebug ) then
-                et.G_LogPrint("ZXPSAVE: " .. msg .. "\n")
-            elseif ( _printDebug ) then
-                et.G_Print("ZXPSAVE: " .. msg .. "\n")
-            end
-            if ( _logDebug ) then
-                LogFile[#LogFile+1] = os.date("[%X]") .. " " .. msg
-                if ( _logStream ) then
-                    _saveLog()
-                end
-            end
+--- Print log message to console & xpsave.log if enabled
+-- [msg] message for string format
+-- [...] args for string format
+function _print (msg,...)
+    if msg == nil then return end
+    msg = et.Q_CleanStr(string.format(msg,...))
+    if msg:len() == 0 then return end
+    if logPrintDebug then
+        et.G_LogPrint(MOD_SHORTNAME ..": " .. msg .. "\n")
+    elseif printDebug then
+        et.G_Print(MOD_SHORTNAME ..": " .. msg .. "\n")
+    end
+    if logDebug then
+        LogFile[#LogFile+1] = os.date("[%X]") .. " " .. msg
+        if logStream then
+            saveLog()
         end
     end
 end
 
-function _write ()
-    _print("_write() XP(".. tostring(XP) .. ") XP_FILE(" .. tostring(XP_FILE) .. ")")
+--- Write xp to XP_FILE
+local writeXp = function()
+    _print("writeXp() XP(%s) XP_FILE(%s)", tostring(XP), tostring(XP_FILE))
     local xp_encoded = JSON:encode_pretty(XP)
     local FileObject = io.open(XP_FILE, "w")
     FileObject:write(xp_encoded)
     FileObject:close()
 end
 
-function _read ()
-    _print("_read() XP(" .. tostring(XP) .. ") XP_FILE(" .. tostring(XP_FILE) .. ")")
+--- Read xp from XP_FILE if it exists
+-- if doesn't exist then return empty table
+function readXp()
+    _print("readXp() XP(%s) XP_FILE(%s)", tostring(XP), tostring(XP_FILE))
     local status, FileObject = pcall(io.open, XP_FILE, "r")
-    _print("_read() FileObject(" .. tostring(FileObject) .. ")")
-    if ( status ) and ( FileObject ~= nil ) then
+    _print("readXp() FileObject(%s)", tostring(FileObject))
+    if ( status and FileObject ~= nil ) then
         local fileData = { }
         for line in FileObject:lines() do
-            if ( line ~= nil ) and ( line ~= "" ) then
+            if ( line ~= nil and line ~= "" ) then
                 fileData[#fileData+1] = line
             end
         end
         FileObject:close()
-        _print("_read() Successfully read " .. tostring(#fileData) .. " lines from " .. tostring(XP_FILE))
+        _print("readXp() Successfully read %s lines from %s", tostring(#fileData), tostring(XP_FILE))
         return JSON:decode( table.concat(fileData,"\n") )  
     else
-        _print("_read() " .. tostring(XP_FILE) .. " not found. Will be created on next shutdown")
+        _print("readXp() %s not found. Will be created on next shutdown",  tostring(XP_FILE))
         return { }
     end
 end
 
-function _message (pos, text, cno)
-    et.trap_SendServerCommand((cno or -1), pos .. " \"" .. text .. "\n\"")
+--- Send a clientMessage
+-- [clientNum]
+-- [position]  - chat,cp,print, etc..
+-- [message]   - message for string format
+-- [...]       - Args for string format
+local clientMessage = function(clientNum, position, message, ...)
+    et.trap_SendServerCommand(tonumber(clientNum) or -1, position or "print" .. "\"" .. string.format(message, ...) .. "\"")
 end
 
-function _getGUID (clientNum)
+--- return client's guid
+-- [clientNum]
+local getGUID = function(clientNum)
     return et.Info_ValueForKey(et.trap_GetUserinfo(clientNum), "cl_guid")
 end
 
-function _validateGUID (clientNum, guid)
+--- Make sure guid is a valid guid before saving to it
+-- Also checks for bot xpsave
+-- [clientNum]
+-- [guid]
+local validateGUID = function(clientNum, guid)
     -- allow only alphanumeric characters in guid
-    if ( guid == nil ) or ( string.match(guid, "%W") ) or ( string.lower(guid) == "no_guid" ) or ( string.lower(guid) == "unknown" ) or ( string.len(guid) < 32 ) then -- Invalid characters detected.
-        _print("_validateGUID Client(" .. tostring(clientNum) .. ") has an invalid guid(" .. tostring(guid) .. ") will not store xp for player")
-        _message("cp", "^1WARNING: ^7Your XP won't be saved because you have an invalid cl_guid.", clientNum)
+    if ( guid == nil or string.match(guid, "%W") or string.lower(guid) == "no_guid" or string.lower(guid) == "unknown" or string.len(guid) < 32 ) then -- Invalid characters detected.
+        _print("validateGUID Client(%s) has an invalid guid(%s) will not store xp for player", tostring(clientNum), tostring(guid))
+        clientMessage(clientNum, "cp", "^1WARNING: ^7Your XP won't be saved because you have an invalid cl_guid.")
         return false
     end
-    _print("_validateGUID Client(" .. tostring(clientNum) .. ") has a valid guid(" .. tostring(guid) .. ")")
+    if not xpSaveForBots and isBot(clientNum) then
+        _print("validateGUID Client(%s) is a bot and xpSaveForBots is disabled", tostring(clientNum))
+        return false
+    end
+    _print("validateGUID Client(%s) has a valid guid(%s)", tostring(clientNum), tostring(guid))
     return true
 end
 
--- identify OMNIBOT GUIDs
-function _trackOmniBotXP (clientNum)
-    local guid = _getGUID(clientNum)
-    -- Verify if server admin wants to track XP for OmniBots
-    if ( string.match(tostring(guid), "OMNIBOT") ) then
-        return _xpSaveForBots -- server admin editable boolean variable at top of script
-    end
-    return true
-end
-
-function _setSkillPoints (clientNum, guid, skillNum)
-    local sp = math.floor(et.gentity_get(clientNum, "sess.skillpoints", skillNum)) -- math.floor correct float error, rounding the number produces inaccurate XP
-    if ( sp > XP[guid].skills[skillNum+1] ) then -- sp should always be equal to or greater than
-        XP[guid].skills[skillNum+1] = sp
+--- Check if guid is a bot
+-- [clientNum]
+function isBot(clientNum)
+    local guid = getGUID(clientNum)
+    if string.match(tostring(guid), "OMNIBOT") then
+        return true
+    else
+        return false
     end
 end
 
-function _resetXp (clientNum)
-    local guid = _getGUID(clientNum)
-    if ( _validateGUID(clientNum, guid) ) then
-        _print("_resetXp Client(" .. tostring(clientNum) .. ") guid(" .. tostring(guid) .. ")")
+--- Sets skill points for client in the XP table
+-- [clientNum]
+-- [guid]
+-- [skillNum] - see at top for skill number values
+local setSkillPoints = function(clientNum, guid, skillNum)
+    local skillPoints = et.gentity_get(clientNum, "sess.skillpoints", skillNum) + 0.0 -- Just in case it is not a float, make it a float for lua 5.3
+    if skillPoints > XP[guid].skills[skillNum+1] then -- skillPoints should always be equal to or greater than
+        XP[guid].skills[skillNum+1] = skillPoints
+    end
+end
+
+--- Reset a client's xp to 0.0
+-- [clientNum]
+function resetXp(clientNum)
+    local guid = getGUID(clientNum)
+    if validateGUID(clientNum, guid) then
+        _print("resetXp Client(%s) guid(%s)", tostring(clientNum), tostring(guid))
         for k=BATTLESENSE+1, COVERTOPS+1 do
-            XP[guid].skills[k] = 0
+            XP[guid].skills[k] = 0.0 -- MUST BE 0.0 to work with lua 5.3 float values
         end
-        _print("_resetXp (" .. tostring(guid) .. ") " .. tostring(XP[guid].skills[BATTLESENSE+1]) .. " " .. tostring(XP[guid].skills[ENGINEERING+1]) .. " " .. tostring(XP[guid].skills[MEDIC+1]) .. " " .. tostring(XP[guid].skills[FIELDOPS+1]) .. " " .. tostring(XP[guid].skills[LIGHTWEAPONS+1]) .. " " .. tostring(XP[guid].skills[HEAVYWEAPONS+1]) .. " " .. tostring(XP[guid].skills[COVERTOPS+1]) )
+        _print("resetXp (%s) %s %s %s %s %s %s %s", tostring(guid), tostring(XP[guid].skills[BATTLESENSE+1]), tostring(XP[guid].skills[ENGINEERING+1]), tostring(XP[guid].skills[MEDIC+1]), tostring(XP[guid].skills[FIELDOPS+1]), tostring(XP[guid].skills[LIGHTWEAPONS+1]), tostring(XP[guid].skills[HEAVYWEAPONS+1]), tostring(XP[guid].skills[COVERTOPS+1]))
         et.G_ResetXP(clientNum)
     end
 end
 
-function _saveXp (clientNum)
-    local guid = _getGUID(clientNum)
-    if ( _validateGUID(clientNum, guid) ) then
-        _print("_saveXp Client(" .. tostring(clientNum) .. ") guid(" .. tostring(guid) .. ")")
-        if ( XP[guid] == nil ) or ( next(XP[guid]) == nil ) then
+--- Save's client's xp
+-- [clientNum]
+local saveXp = function(clientNum)
+    local guid = getGUID(clientNum)
+    if validateGUID(clientNum, guid) then
+        _print("saveXp Client(%s) guid(%s)", tostring(clientNum), tostring(guid))
+        if ( XP[guid] == nil or next(XP[guid]) == nil ) then
             XP[guid] = { }
-            _print("_saveXp new xpsave table created for (" .. tostring(guid) .. ")")
+            _print("saveXp new xpsave table created for (%s)", tostring(guid))
         end
-        if ( XP[guid].skills == nil ) or ( next(XP[guid].skills) == nil ) then -- Check Separately just in-case for some reason this doesn't exist.
+        if ( XP[guid].skills == nil or next(XP[guid].skills) == nil ) then -- Check Separately just in-case for some reason this doesn't exist.
             XP[guid].skills = { }
         end
-        for k=BATTLESENSE, COVERTOPS do
-            _setSkillPoints(clientNum, guid, k)
+        for skillNum=BATTLESENSE, COVERTOPS do
+            setSkillPoints(clientNum, guid, skillNum)
         end
-        _print("_saveXp (" .. tostring(guid) .. ") " .. tostring(XP[guid].skills[BATTLESENSE+1]) .. " " .. tostring(XP[guid].skills[ENGINEERING+1]) .. " " .. tostring(XP[guid].skills[MEDIC+1]) .. " " .. tostring(XP[guid].skills[FIELDOPS+1]) .. " " .. tostring(XP[guid].skills[LIGHTWEAPONS+1]) .. " " .. tostring(XP[guid].skills[HEAVYWEAPONS+1]) .. " " .. tostring(XP[guid].skills[COVERTOPS+1]) )
+        _print("saveXp (%s) %s %s %s %s %s %s %s", tostring(guid), tostring(XP[guid].skills[BATTLESENSE+1]), tostring(XP[guid].skills[ENGINEERING+1]), tostring(XP[guid].skills[MEDIC+1]), tostring(XP[guid].skills[FIELDOPS+1]), tostring(XP[guid].skills[LIGHTWEAPONS+1]), tostring(XP[guid].skills[HEAVYWEAPONS+1]), tostring(XP[guid].skills[COVERTOPS+1]))
         -- Check if player has referee status
         if ( et.gentity_get(clientNum, "sess.referee") == 1 ) then
             XP[guid].referee = true
-            _print("_saveXp Client("..tostring(clientNum)..") saved referee status")
+            _print("saveXp Client(%s,%s) saved referee status", tostring(clientNum), tostring(guid))
         else
             XP[guid].referee = false
         end
@@ -249,36 +297,39 @@ function _saveXp (clientNum)
     end
 end
 
-function _loadXp (clientNum)
-    local guid = _getGUID(clientNum)
-    if ( _validateGUID(clientNum, guid) ) then
-        _print("_loadXp Client(" .. tostring(clientNum) .. ") guid(" .. tostring(guid) .. ")")
-        if ( XP[guid] == nil ) or ( next(XP[guid]) == nil ) then
+--- Loads client's xp
+-- [clientNum]
+local loadXp = function(clientNum)
+    local guid = getGUID(clientNum)
+    if validateGUID(clientNum, guid) then
+        _print("loadXp Client(%s, %s)", tostring(clientNum), tostring(guid))
+        if ( XP[guid] == nil or next(XP[guid]) == nil ) then
             XP[guid] = { }
-            _print("_loadXp new xpsave table created for (" .. tostring(guid) .. ")")
+            _print("loadXp new xpsave table created for (%s)", tostring(guid))
         end
-        if ( XP[guid].skills == nil ) or ( next(XP[guid].skills) == nil ) then -- Check Separately just in-case for some reason this doesn't exist.
+        if ( XP[guid].skills == nil or next(XP[guid].skills) == nil ) then -- Check Separately just in-case for some reason this doesn't exist.
             XP[guid].skills = { }
         end
         for k=BATTLESENSE+1, COVERTOPS+1 do
             if ( XP[guid].skills[k] == nil ) then
-                XP[guid].skills[k] = 0
+                XP[guid].skills[k] = 0.0 -- MUST BE 0.0 for compatibility with lua 5.3
             end
+            XP[guid].skills[k] = XP[guid].skills[k] + 0.0 -- This is a backward compatibility check just in case we loading old version
         end
-        _print("_loadXp (" .. tostring(guid) .. ") " .. tostring(XP[guid].skills[BATTLESENSE+1]) .. " " .. tostring(XP[guid].skills[ENGINEERING+1]) .. " " .. tostring(XP[guid].skills[MEDIC+1]) .. " " .. tostring(XP[guid].skills[FIELDOPS+1]) .. " " .. tostring(XP[guid].skills[LIGHTWEAPONS+1]) .. " " .. tostring(XP[guid].skills[HEAVYWEAPONS+1]) .. " " .. tostring(XP[guid].skills[COVERTOPS+1]) )
+        _print("loadXp (%s) %s %s %s %s %s %s %s", tostring(guid), tostring(XP[guid].skills[BATTLESENSE+1]), tostring(XP[guid].skills[ENGINEERING+1]), tostring(XP[guid].skills[MEDIC+1]), tostring(XP[guid].skills[FIELDOPS+1]), tostring(XP[guid].skills[LIGHTWEAPONS+1]), tostring(XP[guid].skills[HEAVYWEAPONS+1]), tostring(XP[guid].skills[COVERTOPS+1]))
         for k=BATTLESENSE, COVERTOPS do
             et.G_XP_Set(clientNum, XP[guid].skills[k+1], k, 0)
         end
-        if ( XP[guid].referee ) then
-            _print("_loadXp Client("..tostring(clientNum)..") granted referee status")
+        if XP[guid].referee then
+            _print("_loadXp Client(%s, %s) granted referee status", tostring(clientNum), tostring(guid))
             et.gentity_set(clientNum, "sess.referee",1)
         end
     end
 end
 
-function _printFinger (clientNum, targetNum)
-    _print("_printFinger Client(" .. tostring(clientNum) .. ") Target(" .. tostring(targetNum) .. ")")
-    if ( et.gentity_get(clientNum, "sess.referee") == 1 ) then
+local printFinger = function(clientNum, targetNum)
+    _print("printFinger Client(%s) Target(%s)", tostring(clientNum), tostring(targetNum))
+    if et.gentity_get(clientNum, "sess.referee") == 1 then
         local ui        = et.trap_GetUserinfo(targetNum)
         local name      = et.Info_ValueForKey(ui, "name")
         local guid      = et.Info_ValueForKey(ui, "cl_guid")
@@ -286,54 +337,59 @@ function _printFinger (clientNum, targetNum)
         local etversion = et.Info_ValueForKey(ui, "cg_etVersion")
         local protocol  = et.Info_ValueForKey(ui, "protocol")
         local port      = et.Info_ValueForKey(ui, "qport")
-        _message("chat", "^ofinger: ^7Fingered info for " .. tostring(name), clientNum)
-        _message("print", "IP(" .. tostring(ip) .. ") GUID(" .. tostring(guid) .. ") QPORT(" .. tostring(port), clientNum)
-        _message("print", "ETVERSION(" .. tostring(etversion) .. ") PROTOCOL(" .. tostring(protocol), clientNum)
+        clientMessage(clientNum, "chat", "^ofinger: ^7Fingered info for %s", tostring(name))
+        clientMessage(clientNum, "print", "IP(%s) GUID(%s) QPORT(%s)", tostring(ip), tostring(guid), tostring(port))
+        clientMessage(clientNum, "print", "ETVERSION(%s) PROTOCOL(%s)", tostring(etversion), tostring(protocol))
     else
-        _message("chat", "^ofinger: ^7You do not have access to this command", clientNum)
+        clientMessage(clientNum, "chat", "^ofinger: ^7You do not have access to this command")
     end
 end
 
-function _saveXpAll ()
+--- Save xp of everyone online
+local saveXpAll = function()
     for clientNum=0, tonumber(et.trap_Cvar_Get("sv_maxclients"))-1 do
         local connected = et.gentity_get(clientNum, "pers.connected")
         -- 0 = Disconnected
         -- 1 = Connecting  -- Might want to do 1 too which is 'currently connecting' but im not sure if their xp is readable then so maybe not...
         -- 2 = Connected
-        if ( connected == 2 ) and ( _trackOmniBotXP(clientNum) ) then
-            _print("_saveXpAll Client(" .. clientNum .. ") is connected, saving their xp")
-            _saveXp(clientNum)
+        if connected == 2 then
+            _print("saveXpAll Client(%s) is connected, saving their xp", tostring(clientNum))
+            saveXp(clientNum)
         end
     end
 end
 
-function _map ()
+--- Returns the current mapname
+local getMapName = function()
     return tostring(et.trap_Cvar_Get("mapname"))
 end
 
-local _laststate = -1
-function _gamestate ()
-    local gs = tonumber(et.trap_Cvar_Get("gamestate"))
-    if ( gs == 0 ) then
-        if ( laststate == 2 ) then
+--- Returns current game state
+local getGameState = function()
+    local gamestate = tonumber(et.trap_Cvar_Get("gamestate"))
+    if gs == 0 then
+        if lastState == 2 then
             return "warmup end"
         end
         return "game"
-    elseif ( gs == -1 ) then
+    elseif gs == -1 then
         return "game end"
-    elseif ( gs == 2 ) then
-        _laststate = 2
+    elseif gs == 2 then
+        lastState = 2
         return "warmup"
-    elseif ( gs == 3 ) then
+    elseif gs == 3 then
         return "round end"
     else
         return tostring(gs)
     end
 end
 
-function _advPlayers (clientNum)
-    _message("print", "^3 ID ^1: ^3Player                     Rate  Snaps", clientNum)
-    _message("print", "^1--------------------------------------------", clientNum)
+--- List players, id name, rate , & snaps
+-- Zelly: Am not really seeing the point in having this, unless I am mistaken /players does exactly this?
+--          Will keep it for now though.
+local advancedPlayers = function(clientNum)
+    clientMessage(clientNum, "print", "^3 ID ^1: ^3Player                     Rate  Snaps")
+    clientMessage(clientNum, "print", "^1--------------------------------------------")
     local team = {
         "^1X", -- Axis
         "^4L", -- Allies
@@ -357,146 +413,128 @@ function _advPlayers (clientNum)
             ref = ""
         end
         if ( et.gentity_get(i, "pers.connected") == 2 ) then
-            _message("print", string.format("%s^7%2s ^1:^7 %s%s %5s  %5s %s", team[teamNumber], i, name, space, rate, snaps, ref), clientNum)
+            clientMessage(clientNum, "print", string.format("%s^7%2s ^1:^7 %s%s %5s  %5s %s", team[teamNumber], i, name, space, rate, snaps, ref))
             playerCount = playerCount + 1
         end
     end
-    _message("print", "\n^3 " .. playerCount .. " ^7total players\n", clientNum)
+    clientMessage(clientNum, "print", "\n^3 " .. playerCount .. " ^7total players\n")
 end
 
-function _getNextXpReset ()
-    DATE_EPOCH = os.time()
-    XP["XP_SERVER_RESET"].nextreset = DATE_EPOCH + XP_RESET_INTERVAL
-end
-
-function _resetServerXp ()
-    _print("_resetServerXp Deleting xpsave.json and resetting all connected player xp to zero")
-   local XPFileObject = io.open(XP_FILE, "r")
-    if ( XPFileObject ~= nil ) then
-        XPFileObject:close()
-        os.remove(XP_FILE)
-        _print("_resetServerXp XP File(" .. XP_FILE .. ") deleted")
+--- Gets next server reset time
+-- Zelly: don't 100% understand this yet, will look into further
+local getNextServerReset = function()
+    if not XP_RESET_INTERVAL or XP_RESET_INTERVAL <= 0 then
+        XP["XP_SERVER_RESET"].nextreset = -1
+    else
+        DATE_EPOCH = os.time()
+        XP["XP_SERVER_RESET"].nextreset = DATE_EPOCH + XP_RESET_INTERVAL
     end
-    for clientNum=0, tonumber(et.trap_Cvar_Get("sv_maxclients"))-1 do
-        local connected = et.gentity_get(clientNum, "pers.connected")
-        -- 0 = Disconnected
-        -- 1 = Connecting  -- Might want to do 1 too which is 'currently connecting' but im not sure if their xp is readable then so maybe not...
-        -- 2 = Connected
-        if ( connected == 2 ) and ( _trackOmniBotXP(clientNum) ) then
-            local guid = _getGUID(clientNum)
-            if ( _validateGUID(clientNum, guid) ) then
-                _print("_resetServerXp Client(" .. tostring(clientNum) .. ") guid(" .. tostring(guid) .. ")")
-                for k=BATTLESENSE+1, COVERTOPS+1 do
-                    XP[guid].skills[k] = 0
-                end
-                _print("_resetServerXp (" .. tostring(guid) .. ") " .. tostring(XP[guid].skills[BATTLESENSE+1]) .. " " .. tostring(XP[guid].skills[ENGINEERING+1]) .. " " .. tostring(XP[guid].skills[MEDIC+1]) .. " " .. tostring(XP[guid].skills[FIELDOPS+1]) .. " " .. tostring(XP[guid].skills[LIGHTWEAPONS+1]) .. " " .. tostring(XP[guid].skills[HEAVYWEAPONS+1]) .. " " .. tostring(XP[guid].skills[COVERTOPS+1]) )
-                et.G_ResetXP(clientNum)
-            end
+end
+
+--- Reset xp for server
+-- Zelly: cleaned this up quite a bit, was doing unecessary tasks
+local resetServerXp = function()
+    _print("resetServerXp Resetting all connected player xp to zero")
+    for clientNum=0, tonumber(et.trap_Cvar_Get("sv_maxclients"))-1 do -- First reset everyone on the server.
+        resetXp(clientNum)
+    end
+    for i,v in pairs(XP) do
+        if v.skills then
+            _print("resetServerXp Resetting %s's xp", i)
+            v.skills = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 } -- reset xp table
         end
     end
-    _getNextXpReset()
-    _xpServerReset = true
-    _message("print", "^3[SERVER XP RESET] - Complete")
-    _message("cp", "^3[SERVER XP RESET] - Complete")
+    getNextServerReset()
+    xpServerReset = true
+    clientMessage(-1, "print", "^3[SERVER XP RESET] - Complete")
+    clientMessage("cp", "^3[SERVER XP RESET] - Complete")
 end
 
--- countdown timer function from 15 minutes before server xp reset
-function _checkServerXpReset ()
+--- countdown timer function from 15 minutes before server xp reset
+local checkServerXpReset = function()
     DATE_EPOCH = os.time()
     NEXT_RESET = XP["XP_SERVER_RESET"].nextreset
-    
-    if ( NEXT_RESET ~= nil ) and ( DATE_EPOCH >= (NEXT_RESET - 900) ) then
-        -- Check XP Server Reset 15 minute mark
-        if ( DATE_EPOCH == (NEXT_RESET - 900) ) then
-            _message("print", "^3[SERVER XP RESET] - 15:00")
-            _message("cp", "^3[SERVER XP RESET] - 15:00")
-        -- Check XP Server Reset 10 minute mark
-        elseif ( DATE_EPOCH == (NEXT_RESET - 600) ) then
-            _message("print", "^3[SERVER XP RESET] - 10:00")
-            _message("cp", "^3[SERVER XP RESET] - 10:00")
-        -- Check XP Server Reset 5 minute mark
-        elseif ( DATE_EPOCH == (NEXT_RESET - 300) ) then
-            _message("print", "^3[SERVER XP RESET] - 05:00")
-            _message("cp", "^3[SERVER XP RESET] - 05:00")
-        -- Check XP Server Reset 4 minute mark
-        elseif ( DATE_EPOCH == (NEXT_RESET - 240) ) then
-            _message("print", "^3[SERVER XP RESET] - 04:00")
-            _message("cp", "^3[SERVER XP RESET] - 04:00")
-        -- Check XP Server Reset 3 minute mark
-        elseif ( DATE_EPOCH == (NEXT_RESET - 180) ) then
-            _message("print", "^3[SERVER XP RESET] - 03:00")
-            _message("cp", "^3[SERVER XP RESET] - 03:00")
-        -- Check XP Server Reset 2 minute mark
-        elseif ( DATE_EPOCH == (NEXT_RESET - 120) ) then
-            _message("print", "^3[SERVER XP RESET] - 02:00")
-            _message("cp", "^3[SERVER XP RESET] - 02:00")
-        -- Check XP Server Reset 1 minute mark
-        elseif ( DATE_EPOCH == (NEXT_RESET - 60) ) then
-            _message("print", "^3[SERVER XP RESET] - 01:00")
-            _message("cp", "^3[SERVER XP RESET] - 01:00")
-        -- Check XP Server Reset 45 second mark
-        elseif ( DATE_EPOCH == (NEXT_RESET - 45) ) then
-            _message("print", "^3[SERVER XP RESET] - 00:45")
-            _message("cp", "^3[SERVER XP RESET] - 00:45")
-        -- Check XP Server Reset 30 second mark
-        elseif ( DATE_EPOCH == (NEXT_RESET - 30) ) then
-            _message("print", "^3[SERVER XP RESET] - 00:30")
-            _message("cp", "^3[SERVER XP RESET] - 00:30")
-        -- Check XP Server Reset 15 second mark
-        elseif ( DATE_EPOCH == (NEXT_RESET - 15) ) then
-            _message("print", "^3[SERVER XP RESET] - 00:15")
-            _message("cp", "^3[SERVER XP RESET] - 00:15")
+    if NEXT_RESET == nil or NEXT_RESET <= 0 then return end
+    if ( NEXT_RESET ~= nil and DATE_EPOCH >= (NEXT_RESET - 900) ) then
+        if ( DATE_EPOCH == (NEXT_RESET - 900) ) then -- Check XP Server Reset 15 minute mark
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - 15:00")
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 15:00")
+        elseif ( DATE_EPOCH == (NEXT_RESET - 600) ) then -- Check XP Server Reset 10 minute mark
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - 10:00")
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 10:00")
+        elseif ( DATE_EPOCH == (NEXT_RESET - 300) ) then -- Check XP Server Reset 5 minute mark
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - 05:00")
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 05:00")
+        elseif ( DATE_EPOCH == (NEXT_RESET - 240) ) then -- Check XP Server Reset 4 minute mark
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - 04:00")
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 04:00")
+        elseif ( DATE_EPOCH == (NEXT_RESET - 180) ) then -- Check XP Server Reset 3 minute mark
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - 03:00")
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 03:00")
+        elseif ( DATE_EPOCH == (NEXT_RESET - 120) ) then -- Check XP Server Reset 2 minute mark
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - 02:00")
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 02:00")
+        elseif ( DATE_EPOCH == (NEXT_RESET - 60) ) then -- Check XP Server Reset 1 minute mark
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - 01:00")
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 01:00")
+        elseif ( DATE_EPOCH == (NEXT_RESET - 45) ) then -- Check XP Server Reset 45 second mark
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - 00:45")
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 00:45")
+        elseif ( DATE_EPOCH == (NEXT_RESET - 30) ) then -- Check XP Server Reset 30 second mark
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - 00:30")
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 00:30")
+        elseif ( DATE_EPOCH == (NEXT_RESET - 15) ) then -- Check XP Server Reset 15 second mark
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - 00:15")
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 00:15")
             SEC_TIMER = 14
-        -- Reset Server XP
-        elseif ( DATE_EPOCH >= NEXT_RESET ) then
+        elseif ( DATE_EPOCH >= NEXT_RESET ) then -- Reset Server XP
             SEC_TIMER = nil
-            _resetServerXp()
-        -- Check XP Server Reset remaining seconds
-        elseif ( SEC_TIMER ~= nil ) then
+            resetServerXp()
+        elseif ( SEC_TIMER ~= nil ) then -- Check XP Server Reset remaining seconds
             if ( SEC_TIMER >= 10 ) then
                 secs_left_text = "^3[SERVER XP RESET] - 00:" .. SEC_TIMER
             else
                 secs_left_text = "^3[SERVER XP RESET] - 00:0" .. SEC_TIMER
             end
-            _message("print", secs_left_text)
-            _message("cp", secs_left_text)
+            clientMessage(-1, "print", secs_left_text)
+            clientMessage(-1, "cp", secs_left_text)
             SEC_TIMER = SEC_TIMER - 1
         end
     end
 end
 
 function et_InitGame (levelTime, randomSeed, restart)
-    et.RegisterModname("ZXPSave")
-    _print(scriptName .. " " .. version .. " Init - " .. _gamestate() .. " - " .. _map())
+    et.RegisterModname(MOD_SHORTNAME .. " " .. MOD_VERSION)
+    _print(MOD_NAME .. " " .. MOD_VERSION .. " Init - " .. getGameState() .. " - " .. getMapName())
     _print("Load Path : " .. tostring(readPath))
     _print("Write Path : " .. tostring(writePath))
-    XP = _read()
-    if ( XP["XP_SERVER_RESET"] == nil ) or ( next(XP["XP_SERVER_RESET"]) == nil ) then
+    XP = readXp()
+    if ( XP["XP_SERVER_RESET"] == nil or next(XP["XP_SERVER_RESET"]) == nil ) then
         XP["XP_SERVER_RESET"] = { }
-        _getNextXpReset()
+        getNextServerReset()
     end
 end
 
 function et_ShutdownGame (restart)
-    _print(scriptName .. " " .. version .. " Shutdown - " .. _gamestate() .. " - " .. _map())
-    _saveXpAll()
-    _write()
-    _saveLog()
+    _print(MOD_NAME .. " " .. MOD_VERSION .. " Shutdown - " .. getGameState() .. " - " .. getMapName())
+    saveXpAll()
+    writeXp()
+    saveLog()
 end
 
 function et_RunFrame (levelTime)
-    if ( (levelTime % 1000) == 0 ) and not ( _xpServerReset ) then
-        _checkServerXpReset()
+    if ( (levelTime % 1000) == 0 and not xpServerReset ) then
+        checkServerXpReset()
     end
 
-    if ( _gamestate() ~= "round end" ) then -- gamestate 3 is Timlimit hit or objectives complete
-        if ( (levelTime % (_saveTime * 1000)) == 0 ) then
+    if getGameState() ~= "round end" then -- gamestate 3 is Timlimit hit or objectives complete
+        if  (levelTime % (saveTime  * 1000)) == 0 then
             _print("et_Runframe saving all active clients")
-            _saveXpAll()
+            saveXpAll()
         end
-    elseif ( _gamestate() == "round end" ) and not ( XP_END_ROUND_SAVED ) then
+    elseif ( getGameState() == "round end" ) and not ( XP_END_ROUND_SAVED ) then
         _print("et_Runframe round ended saving all active clients")
-        _saveXpAll()
+        saveXpAll()
         XP_END_ROUND_SAVED = true
     end
 end
@@ -507,45 +545,41 @@ function et_ClientCommand (clientNum, command)
     if ( Arg0 == "say" )  then
         if ( Arg1 == "!finger" ) then
             local targetNum = et.ClientNumberFromString(et.trap_Argv(2))
-            _printFinger(clientNum, targetNum)
+            printFinger(clientNum, targetNum)
             return 1
         elseif ( Arg1 == "!loadxp" ) then
-            _loadXp(clientNum)
-            _message("print", "^oLoadXp: ^7Your xp has been loaded", clientNum)
-            _message("cp", "^oLoadXp: ^7Your xp has been loaded", clientNum)
+            loadXp(clientNum)
+            clientMessage(clientNum, "print", "^oLoadXp: ^7Your xp has been loaded")
+            clientMessage(clientNum, "cp", "^oLoadXp: ^7Your xp has been loaded")
             return 1
         elseif ( Arg1 == "!savexp" ) then
-            _saveXp(clientNum)
-            _message("print", "^oSaveXp: ^7Your xp has been saved", clientNum)
-            _message("cp", "^oSaveXp: ^7Your xp has been saved", clientNum)
+            saveXp(clientNum)
+            clientMessage(clientNum, "print", "^oSaveXp: ^7Your xp has been saved")
+            clientMessage(clientNum, "cp", "^oSaveXp: ^7Your xp has been saved")
             return 1
         elseif ( Arg1 == "!resetxp" ) then
-            _resetXp(clientNum)
-            _message("print", "^oResetXp: ^7Your xp has been reset", clientNum)
-            _message("cp", "^oResetXp: ^7Your xp has been reset", clientNum)
+            resetXp(clientNum)
+            clientMessage(clientNum, "print", "^oResetXp: ^7Your xp has been reset")
+            clientMessage(clientNum, "cp", "^oResetXp: ^7Your xp has been reset")
             return 1
         elseif ( Arg1 == "!players" ) then
-            _advPlayers(clientNum)
+            advancedPlayers(clientNum)
             return 1
         end
     end
 end
 
 function et_ClientConnect (clientNum)
-    if ( _trackOmniBotXP(clientNum) ) then
-        _print("et_ClientConnect Client(" .. clientNum .. ") connected, loading their xp")
-        _loadXp(clientNum)
-    end
+    _print("et_ClientConnect Client(%s) connected, loading their xp", tostring(clientNum))
+    loadXp(clientNum)
 end
 
 function et_ClientBegin (clientNum)
     local name = et.Info_ValueForKey(et.trap_GetUserinfo(clientNum), "name")
-    _message("cpm", "^3Welcome ^7" .. name .. "^3! You are playing on an XP save server", clientNum)
+    clientMessage(clientNum, "cpm", "^3Welcome ^7%s^3! You are playing on an XP save server", tostring(name))
 end
 
 function et_ClientDisconnect (clientNum)
-    if ( _trackOmniBotXP(clientNum) ) then
-        _print("et_ClientDisconnect Client(" .. clientNum .. ") disconnected, saving their xp")
-        _saveXp(clientNum)
-    end
+    _print("et_ClientDisconnect Client(%s) disconnected, saving their xp", tostring(clientNum))
+    saveXp(clientNum)
 end
