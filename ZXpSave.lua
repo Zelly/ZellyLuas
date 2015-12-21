@@ -34,7 +34,7 @@ Command List:
 
 Version: 8.2
  Removed !players command (redundant)
- Added new value to XP["XP_SERVER_RESEt"].resetinterval, to crosscheck if admin changed XP_RESET_INTERVAL
+ Added new value to XP["XP_SERVER_RESET"].resetinterval, to crosscheck if admin changed XP_RESET_INTERVAL
  Fixed lines 484, 485 and 493 to correct attempt to concatenate a nil value, added tostring()
  Updated getNextServerReset and added comments on justification
  Updated line 209 clientMessage because it wasn't printing.
@@ -85,7 +85,7 @@ local logPrintDebug         = false -- If you want it to log to server log ( Req
 local logDebug              = true  -- If you want it to log to xpsave.log
 local logStream             = true  -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires logDebug = true )
 local xpSaveForBots         = false -- If you want to save xp for bots
-local XP_RESET_INTERVAL     = "0"   -- Variable to determine when server wide xp resets
+local XP_RESET_INTERVAL     = "30d"   -- Variable to determine when server wide xp resets
 -- XP_RESET_INTERVAL = "5d"  - 5 days
 -- XP_RESET_INTERVAL = "36h" - 36 hours
 -- XP_RESET_INTERVAL = "2w"  - 2 weeks
@@ -432,51 +432,38 @@ end
 --- countdown timer function from 15 minutes before server xp reset
 local checkServerXpReset = function()
     DATE_EPOCH = os.time()
-    if NEXT_RESET == nil or NEXT_RESET <= 0 then return end
-    if ( NEXT_RESET ~= nil and DATE_EPOCH >= (NEXT_RESET - 900) ) then
+    local time
+    if ( NEXT_RESET ~= nil and NEXT_RESET >= 1 and DATE_EPOCH >= (NEXT_RESET - 900) or DATE_EPOCH >= NEXT_RESET ) then
         if ( DATE_EPOCH == (NEXT_RESET - 900) ) then -- Check XP Server Reset 15 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 15:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 15:00")
+            time = os.date("%M:%S", 900)
         elseif ( DATE_EPOCH == (NEXT_RESET - 600) ) then -- Check XP Server Reset 10 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 10:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 10:00")
+            time = os.date("%M:%S", 600)
         elseif ( DATE_EPOCH == (NEXT_RESET - 300) ) then -- Check XP Server Reset 5 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 05:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 05:00")
+            time = os.date("%M:%S", 300)
         elseif ( DATE_EPOCH == (NEXT_RESET - 240) ) then -- Check XP Server Reset 4 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 04:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 04:00")
+            time = os.date("%M:%S", 240)
         elseif ( DATE_EPOCH == (NEXT_RESET - 180) ) then -- Check XP Server Reset 3 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 03:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 03:00")
+            time = os.date("%M:%S", 180)
         elseif ( DATE_EPOCH == (NEXT_RESET - 120) ) then -- Check XP Server Reset 2 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 02:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 02:00")
+            time = os.date("%M:%S", 120)
         elseif ( DATE_EPOCH == (NEXT_RESET - 60) ) then -- Check XP Server Reset 1 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 01:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 01:00")
+            time = os.date("%M:%S", 60)
         elseif ( DATE_EPOCH == (NEXT_RESET - 45) ) then -- Check XP Server Reset 45 second mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 00:45")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 00:45")
+            time = os.date("%M:%S", 45)
         elseif ( DATE_EPOCH == (NEXT_RESET - 30) ) then -- Check XP Server Reset 30 second mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 00:30")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 00:30")
+            time = os.date("%M:%S", 30)
         elseif ( DATE_EPOCH == (NEXT_RESET - 15) ) then -- Check XP Server Reset 15 second mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 00:15")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 00:15")
+            time = os.date("%M:%S", 15)
             SEC_TIMER = 14
-        elseif ( DATE_EPOCH >= NEXT_RESET ) then -- Reset Server XP
-            SEC_TIMER = nil
-            resetServerXp()
-        elseif ( SEC_TIMER ~= nil ) then -- Check XP Server Reset remaining seconds
-            if ( SEC_TIMER >= 10 ) then
-                secs_left_text = "^3[SERVER XP RESET] - 00:" .. SEC_TIMER
-            else
-                secs_left_text = "^3[SERVER XP RESET] - 00:0" .. SEC_TIMER
-            end
-            clientMessage(-1, "print", secs_left_text)
-            clientMessage(-1, "cp", secs_left_text)
+        elseif ( DATE_EPOCH < NEXT_RESET and SEC_TIMER ~= nil) then -- Check XP Server Reset remaining seconds
+            time = os.date("%M:%S", SEC_TIMER)
             SEC_TIMER = SEC_TIMER - 1
+        elseif ( DATE_EPOCH >= NEXT_RESET ) then -- Reset Server XP
+            resetServerXp()
+        end
+        if ( time ~= nil ) then
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - %s", tostring(time))
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - %s", tostring(time))
         end
     end
 end
