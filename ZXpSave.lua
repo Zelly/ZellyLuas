@@ -32,7 +32,7 @@ Command List:
 
 !finger <target> - Provides info on a client, if you have referee status
 
-Version: 8.2
+Version: 8.3
  Removed !players command (redundant)
  Added new value to XP["XP_SERVER_RESET"].resetinterval, to crosscheck if admin changed XP_RESET_INTERVAL
  Fixed lines 484, 485 and 493 to correct attempt to concatenate a nil value, added tostring()
@@ -240,7 +240,7 @@ end
 
 --- Check if guid is a bot
 -- [clientNum]
-function isBot(clientNum)
+local isBot = function(clientNum)
     local guid = getGUID(clientNum)
     if string.match(tostring(guid), "OMNIBOT") then
         return true
@@ -262,7 +262,7 @@ end
 
 --- Reset a client's xp to 0.0
 -- [clientNum]
-function resetXp(clientNum)
+local resetXp = function(clientNum)
     local guid = getGUID(clientNum)
     if validateGUID(clientNum, guid) then
         _print("resetXp Client(%s) guid(%s)", tostring(clientNum), tostring(guid))
