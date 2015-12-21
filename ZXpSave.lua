@@ -339,7 +339,7 @@ end
 
 local printFinger = function(clientNum, targetNum)
     _print("printFinger Client(%s) Target(%s)", tostring(clientNum), tostring(targetNum))
-    if et.gentity_get(clientNum, "sess.referee") == 0 then
+    if et.gentity_get(clientNum, "sess.referee") == 1 then
         local ui        = et.trap_GetUserinfo(targetNum)
         local name      = et.Info_ValueForKey(ui, "name")
         local guid      = et.Info_ValueForKey(ui, "cl_guid")
