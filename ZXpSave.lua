@@ -35,7 +35,7 @@ Command List:
 Version: 8.2
  Removed !players command (redundant)
  Added new value to XP["XP_SERVER_RESEt"].resetinterval, to crosscheck if admin changed XP_RESET_INTERVAL
- Fixed lines 484, 485 and 493 to correct attempt to concatenate a nil value. tostring()
+ Fixed lines 484, 485 and 493 to correct attempt to concatenate a nil value, added tostring()
  Updated getNextServerReset and added comments on justification
  Updated line 209 clientMessage because it wasn't printing.
   -- position or "print" caused messages not to display (removed "print")
