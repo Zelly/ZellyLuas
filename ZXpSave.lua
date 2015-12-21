@@ -14,7 +14,7 @@ To find fs_basepath , fs_homepath , and fs_game type them in the server console 
 Contributors:
  https://github.com/Zelly
  https://github.com/klassifyed
-version: 8.2
+version: 8.4
 
 Dev notes:
  MAKE SURE THE XP VALUES ARE COMPUTED WITH FLOAT VALUES NOT INTS
@@ -29,9 +29,13 @@ Command List:
 !loadxp   - Loads your xp from file
 !savexp   - Saves your xp to file
 !resetxp  - Resets your xp
+!printxp  - Print your xp levels(mostly for debugging)
 
 !finger <target> - Provides info on a client, if you have referee status
 
+Version: 8.4
+ Updated some functions were not local
+ Added printxp command
 Version: 8.3
  Removed !players command (redundant)
  Added new value to XP["XP_SERVER_RESET"].resetinterval, to crosscheck if admin changed XP_RESET_INTERVAL
@@ -73,7 +77,7 @@ Version 1.0-3.0:
  Xp will not save on shutdown
 --]]
 local MOD_NAME      = "Zelly's JSON Legacy Mod XpSave Lua" -- Lua Module name (Shown in lua_status and various messages)
-local MOD_VERSON    = "8.2" -- Lua Module Version (Shown in lua_status and various messages)
+local MOD_VERSON    = "8.4" -- Lua Module Version (Shown in lua_status and various messages)
 local MOD_SHORTNAME = "ZXPSAVE"
 
 -------------------------
@@ -156,7 +160,7 @@ end
 --- Print log message to console & xpsave.log if enabled
 -- [msg] message for string format
 -- [...] args for string format
-function _print (msg,...)
+local _print = function(msg, ...)
     if msg == nil then return end
     msg = et.Q_CleanStr(string.format(msg,...))
     if msg:len() == 0 then return end
@@ -184,7 +188,7 @@ end
 
 --- Read xp from XP_FILE if it exists
 -- if doesn't exist then return empty table
-function readXp()
+local readXp = function()
     _print("readXp() XP(%s) XP_FILE(%s)", tostring(XP), tostring(XP_FILE))
     local status, FileObject = pcall(io.open, XP_FILE, "r")
     _print("readXp() FileObject(%s)", tostring(FileObject))
@@ -349,6 +353,31 @@ local printFinger = function(clientNum, targetNum)
     else
         clientMessage(clientNum, "chat", "^ofinger: ^7You do not have access to this command")
     end
+end
+
+--[[
+local skillcvars = { "skill_battlesense", "skill_engineer", "skill_medic", "skill_fieldops", "skill_lightweapons", "skill_heavyweapons", "skill_covertops"}
+local getServerSkillLevel = function(skillNum)
+    local skilltable = et.trap_Cvar_Get(skillcvars[skillNum+1])
+    -- Convert "%d %d %d %d" into { x,x,x,x }
+    -- can then see what level the client has.
+end--]]
+
+local printXp = function(clientNum)
+    local guid = getGUID(clientNum)
+    -- This is more of a debug function to compare your saved xp with your current xp
+    if not XP[guid] or not next(XP[guid]) or not XP[guid].skills then return end
+    local printxpvalues = function(skillName, skillNum)
+        clientMessage(clientNum, "print", "%s %s || %s", skillName, tostring(XP[guid].skills[skillNum+1]),tostring(et.gentity_get(clientNum,"sess.skillpoints",skillNum)))
+    end
+    clientMessage(clientNum, "print", "Saved xp || Current xp")
+    printxpvalues("BATTLESENSE ", BATTLESENSE)
+    printxpvalues("ENGINEERING ", ENGINEERING)
+    printxpvalues("MEDIC       ", MEDIC)
+    printxpvalues("FIELDOPS    ", FIELDOPS)
+    printxpvalues("LIGHTWEAPONS", LIGHTWEAPONS)
+    printxpvalues("HEAVYWEAPONS", HEAVYWEAPONS)
+    printxpvalues("COVERTOPS   ", COVERTOPS)
 end
 
 --- Save xp of everyone online
@@ -523,6 +552,9 @@ function et_ClientCommand (clientNum, command)
             resetXp(clientNum)
             clientMessage(clientNum, "print", "^oResetXp: ^7Your xp has been reset")
             clientMessage(clientNum, "cp", "^oResetXp: ^7Your xp has been reset")
+            return 1
+        elseif ( Arg1 == "!printxp" ) then
+            printXp(clientNum)
             return 1
         end
     end
