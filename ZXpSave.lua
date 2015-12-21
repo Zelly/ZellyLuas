@@ -213,10 +213,6 @@ local clientMessage = function(clientNum, position, message, ...)
     et.trap_SendServerCommand(tonumber(clientNum), position .. "\"" .. string.format(message, ...) .. "\n\"")
 end
 
-function _message (pos, text, cno)
-    et.trap_SendServerCommand((cno or -1), pos .. " \"" .. text .. "\n\"")
-end
-
 --- return client's guid
 -- [clientNum]
 local getGUID = function(clientNum)
