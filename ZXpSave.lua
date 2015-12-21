@@ -14,26 +14,33 @@ To find fs_basepath , fs_homepath , and fs_game type them in the server console 
 Contributors:
  https://github.com/Zelly
  https://github.com/klassifyed
-version: 8.1
+version: 8.2
 
 Dev notes:
  MAKE SURE THE XP VALUES ARE COMPUTED WITH FLOAT VALUES NOT INTS
-   Lua 5.3 float values and int's can't really interact because of the whole 64 bit integer
-   We need to use float values because g_construcibleengineersharing(Don't recall actual cvar)
+ Lua 5.3 float values and int's can't really interact because of the whole 64 bit integer
+ We need to use float values because g_construcibleengineersharing(Don't recall actual cvar)
  Keep as much stuff local as possible
  I use tostring() a lot in the print statements. The reason for this is, instead of using %d for example, is because
-   if the value happens tobe nil for some reason it will print "nil" instead of an error.
+ if the value happens tobe nil for some reason it will print "nil" instead of an error.
  
 
 Command List:
 !loadxp   - Loads your xp from file
 !savexp   - Saves your xp to file
 !resetxp  - Resets your xp
-!players  - List all active clients
 
 !finger <target> - Provides info on a client, if you have referee status
 
-
+Version: 8.2
+ Removed !players command (redundant)
+ Added new value to XP["XP_SERVER_RESET"].resetinterval, to crosscheck if admin changed XP_RESET_INTERVAL
+ Fixed lines 484, 485 and 493 to correct attempt to concatenate a nil value, added tostring()
+ Updated getNextServerReset and added comments on justification
+ Updated line 209 clientMessage because it wasn't printing.
+  -- position or "print" caused messages not to display (removed "print")
+  -- using clientNum or -1 makes no difference if the first parameter in the function is clientNum (removed or -1)
+  -- added n\ to ensure line return after message, otherwise the next print goes inline with the previous
 Version: 8.1
  Removed unecessary underscores, since everything is local
  Added bit more commenting
@@ -66,7 +73,7 @@ Version 1.0-3.0:
  Xp will not save on shutdown
 --]]
 local MOD_NAME      = "Zelly's JSON Legacy Mod XpSave Lua" -- Lua Module name (Shown in lua_status and various messages)
-local MOD_VERSON    = "8.1" -- Lua Module Version (Shown in lua_status and various messages)
+local MOD_VERSON    = "8.2" -- Lua Module Version (Shown in lua_status and various messages)
 local MOD_SHORTNAME = "ZXPSAVE"
 
 -------------------------
@@ -74,11 +81,11 @@ local MOD_SHORTNAME = "ZXPSAVE"
 -------------------------
 local saveTime              = 30    -- Seconds in between each runframe xp will save
 local printDebug            = false -- If you want to print to console
-local logPrintDebug         = false -- If you want it to log to server log ( Requires _printDebug = true )
+local logPrintDebug         = false -- If you want it to log to server log ( Requires printDebug = true )
 local logDebug              = true  -- If you want it to log to xpsave.log
-local logStream             = true  -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires _logDebug = true )
+local logStream             = true  -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires logDebug = true )
 local xpSaveForBots         = false -- If you want to save xp for bots
-local XP_RESET_INTERVAL     = "0"   -- Variable to determine when server wide xp resets
+local XP_RESET_INTERVAL     = "30d"   -- Variable to determine when server wide xp resets
 -- XP_RESET_INTERVAL = "5d"  - 5 days
 -- XP_RESET_INTERVAL = "36h" - 36 hours
 -- XP_RESET_INTERVAL = "2w"  - 2 weeks
@@ -95,7 +102,6 @@ local XP_FILE               = writePath .. "xpsave.json" -- If you want you can 
 local XP_LOGFILE            = writePath .. "xpsave.log"
 local XP_RESET_COUNTDOWN    = 900 -- ( 60 * 15 ) 15 minutes before reset
 local XP_END_ROUND_SAVED    = false
-local XP_SERVER_RESET       = false
 
 local BATTLESENSE           = 0
 local ENGINEERING           = 1
@@ -204,7 +210,7 @@ end
 -- [message]   - message for string format
 -- [...]       - Args for string format
 local clientMessage = function(clientNum, position, message, ...)
-    et.trap_SendServerCommand(tonumber(clientNum) or -1, position or "print" .. "\"" .. string.format(message, ...) .. "\"")
+    et.trap_SendServerCommand(tonumber(clientNum), position .. "\"" .. string.format(message, ...) .. "\n\"")
 end
 
 --- return client's guid
@@ -384,55 +390,28 @@ local getGameState = function()
     end
 end
 
---- List players, id name, rate , & snaps
--- Zelly: Am not really seeing the point in having this, unless I am mistaken /players does exactly this?
---          Will keep it for now though.
-local advancedPlayers = function(clientNum)
-    clientMessage(clientNum, "print", "^3 ID ^1: ^3Player                     Rate  Snaps")
-    clientMessage(clientNum, "print", "^1--------------------------------------------")
-    local team = {
-        "^1X", -- Axis
-        "^4L", -- Allies
-        "^3S"  -- Spectator
-    }
-    local playerCount = 0
-    local spa = 24
-    for i=0, tonumber(et.trap_Cvar_Get("sv_maxclients"))-1 do
-        local teamNumber = et.gentity_get(i, "sess.sessionTeam")
-        local clientName = et.Info_ValueForKey(et.trap_GetUserinfo(i), "name")
-        local rate       = et.Info_ValueForKey(et.trap_GetUserinfo(i), "rate")
-        local snaps      = et.Info_ValueForKey(et.trap_GetUserinfo(i), "snaps")
-        local name       = string.lower(et.Q_CleanStr(clientName))
-        local namel      = string.len(name) - 1
-        local nameSpa    = spa - namel
-        local space      = string.rep(" ", nameSpa)
-        local ref        = et.gentity_get(i, "sess.referee")
-        if ( ref == 1 ) then
-            ref = "^3REF"
-        else
-            ref = ""
-        end
-        if ( et.gentity_get(i, "pers.connected") == 2 ) then
-            clientMessage(clientNum, "print", string.format("%s^7%2s ^1:^7 %s%s %5s  %5s %s", team[teamNumber], i, name, space, rate, snaps, ref))
-            playerCount = playerCount + 1
-        end
-    end
-    clientMessage(clientNum, "print", "\n^3 " .. playerCount .. " ^7total players\n")
-end
-
 --- Gets next server reset time
 -- Zelly: don't 100% understand this yet, will look into further
+-- Klassifyed: if server admin wants XP reset by XP_RESET_INTERVAL. this function is called 
+--   on InitGame to verify admin hasn't changed XP_RESET_INTERVAL and again after a xp server reset
 local getNextServerReset = function()
+    if ( XP["XP_SERVER_RESET"] == nil or next(XP["XP_SERVER_RESET"]) == nil ) then
+        XP["XP_SERVER_RESET"] = { }
+        XP["XP_SERVER_RESET"].resetinterval = XP_RESET_INTERVAL
+    end
     if not XP_RESET_INTERVAL or XP_RESET_INTERVAL <= 0 then
         XP["XP_SERVER_RESET"].nextreset = -1
-    else
+    elseif ( xpServerReset or XP["XP_SERVER_RESET"].resetinterval ~= XP_RESET_INTERVAL ) then
         DATE_EPOCH = os.time()
+        XP["XP_SERVER_RESET"].resetinterval = XP_RESET_INTERVAL
         XP["XP_SERVER_RESET"].nextreset = DATE_EPOCH + XP_RESET_INTERVAL
     end
+    NEXT_RESET = XP["XP_SERVER_RESET"].nextreset
 end
 
 --- Reset xp for server
 -- Zelly: cleaned this up quite a bit, was doing unecessary tasks
+-- Klassifyed: Thank-you, much much nicer
 local resetServerXp = function()
     _print("resetServerXp Resetting all connected player xp to zero")
     for clientNum=0, tonumber(et.trap_Cvar_Get("sv_maxclients"))-1 do -- First reset everyone on the server.
@@ -447,76 +426,59 @@ local resetServerXp = function()
     getNextServerReset()
     xpServerReset = true
     clientMessage(-1, "print", "^3[SERVER XP RESET] - Complete")
-    clientMessage("cp", "^3[SERVER XP RESET] - Complete")
+    clientMessage(-1, "cp", "^3[SERVER XP RESET] - Complete")
 end
 
 --- countdown timer function from 15 minutes before server xp reset
 local checkServerXpReset = function()
     DATE_EPOCH = os.time()
-    NEXT_RESET = XP["XP_SERVER_RESET"].nextreset
-    if NEXT_RESET == nil or NEXT_RESET <= 0 then return end
-    if ( NEXT_RESET ~= nil and DATE_EPOCH >= (NEXT_RESET - 900) ) then
+    local time
+    if ( NEXT_RESET ~= nil and NEXT_RESET >= 1 and DATE_EPOCH >= (NEXT_RESET - 900) or DATE_EPOCH >= NEXT_RESET ) then
         if ( DATE_EPOCH == (NEXT_RESET - 900) ) then -- Check XP Server Reset 15 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 15:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 15:00")
+            time = os.date("%M:%S", 900)
         elseif ( DATE_EPOCH == (NEXT_RESET - 600) ) then -- Check XP Server Reset 10 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 10:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 10:00")
+            time = os.date("%M:%S", 600)
         elseif ( DATE_EPOCH == (NEXT_RESET - 300) ) then -- Check XP Server Reset 5 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 05:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 05:00")
+            time = os.date("%M:%S", 300)
         elseif ( DATE_EPOCH == (NEXT_RESET - 240) ) then -- Check XP Server Reset 4 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 04:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 04:00")
+            time = os.date("%M:%S", 240)
         elseif ( DATE_EPOCH == (NEXT_RESET - 180) ) then -- Check XP Server Reset 3 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 03:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 03:00")
+            time = os.date("%M:%S", 180)
         elseif ( DATE_EPOCH == (NEXT_RESET - 120) ) then -- Check XP Server Reset 2 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 02:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 02:00")
+            time = os.date("%M:%S", 120)
         elseif ( DATE_EPOCH == (NEXT_RESET - 60) ) then -- Check XP Server Reset 1 minute mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 01:00")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 01:00")
+            time = os.date("%M:%S", 60)
         elseif ( DATE_EPOCH == (NEXT_RESET - 45) ) then -- Check XP Server Reset 45 second mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 00:45")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 00:45")
+            time = os.date("%M:%S", 45)
         elseif ( DATE_EPOCH == (NEXT_RESET - 30) ) then -- Check XP Server Reset 30 second mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 00:30")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 00:30")
+            time = os.date("%M:%S", 30)
         elseif ( DATE_EPOCH == (NEXT_RESET - 15) ) then -- Check XP Server Reset 15 second mark
-            clientMessage(-1, "print", "^3[SERVER XP RESET] - 00:15")
-            clientMessage(-1, "cp", "^3[SERVER XP RESET] - 00:15")
+            time = os.date("%M:%S", 15)
             SEC_TIMER = 14
-        elseif ( DATE_EPOCH >= NEXT_RESET ) then -- Reset Server XP
-            SEC_TIMER = nil
-            resetServerXp()
-        elseif ( SEC_TIMER ~= nil ) then -- Check XP Server Reset remaining seconds
-            if ( SEC_TIMER >= 10 ) then
-                secs_left_text = "^3[SERVER XP RESET] - 00:" .. SEC_TIMER
-            else
-                secs_left_text = "^3[SERVER XP RESET] - 00:0" .. SEC_TIMER
-            end
-            clientMessage(-1, "print", secs_left_text)
-            clientMessage(-1, "cp", secs_left_text)
+        elseif ( DATE_EPOCH < NEXT_RESET and SEC_TIMER ~= nil) then -- Check XP Server Reset remaining seconds
+            time = os.date("%M:%S", SEC_TIMER)
             SEC_TIMER = SEC_TIMER - 1
+        elseif ( DATE_EPOCH >= NEXT_RESET ) then -- Reset Server XP
+            resetServerXp()
+        end
+        if ( time ~= nil ) then
+            clientMessage(-1, "print", "^3[SERVER XP RESET] - %s", tostring(time))
+            clientMessage(-1, "cp", "^3[SERVER XP RESET] - %s", tostring(time))
         end
     end
 end
 
 function et_InitGame (levelTime, randomSeed, restart)
-    et.RegisterModname(MOD_SHORTNAME .. " " .. MOD_VERSION)
-    _print(MOD_NAME .. " " .. MOD_VERSION .. " Init - " .. getGameState() .. " - " .. getMapName())
+    et.RegisterModname(tostring(MOD_SHORTNAME) .. " " .. tostring(MOD_VERSION))
+    _print(MOD_NAME .. " " .. tostring(MOD_VERSION) .. " Init - " .. getGameState() .. " - " .. getMapName())
     _print("Load Path : " .. tostring(readPath))
     _print("Write Path : " .. tostring(writePath))
     XP = readXp()
-    if ( XP["XP_SERVER_RESET"] == nil or next(XP["XP_SERVER_RESET"]) == nil ) then
-        XP["XP_SERVER_RESET"] = { }
-        getNextServerReset()
-    end
+    getNextServerReset()
 end
 
 function et_ShutdownGame (restart)
-    _print(MOD_NAME .. " " .. MOD_VERSION .. " Shutdown - " .. getGameState() .. " - " .. getMapName())
+    _print(tostring(MOD_NAME) .. " " .. tostring(MOD_VERSION) .. " Shutdown - " .. getGameState() .. " - " .. getMapName())
     saveXpAll()
     writeXp()
     saveLog()
@@ -561,9 +523,6 @@ function et_ClientCommand (clientNum, command)
             resetXp(clientNum)
             clientMessage(clientNum, "print", "^oResetXp: ^7Your xp has been reset")
             clientMessage(clientNum, "cp", "^oResetXp: ^7Your xp has been reset")
-            return 1
-        elseif ( Arg1 == "!players" ) then
-            advancedPlayers(clientNum)
             return 1
         end
     end
