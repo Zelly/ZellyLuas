@@ -84,12 +84,12 @@ local MOD_SHORTNAME = "ZXPSAVE"
 ---- Admin Variables ----
 -------------------------
 local saveTime              = 30    -- Seconds in between each runframe xp will save
-local printDebug            = false -- If you want to print to console
-local logPrintDebug         = false -- If you want it to log to server log ( Requires printDebug = true )
+local printDebug            = true -- If you want to print to console
+local logPrintDebug         = true -- If you want it to log to server log ( Requires printDebug = true )
 local logDebug              = true  -- If you want it to log to xpsave.log
 local logStream             = true  -- If you want it to update xpsave.log every message, false if just at end of round. ( Requires logDebug = true )
 local xpSaveForBots         = false -- If you want to save xp for bots
-local XP_RESET_INTERVAL     = "30d"   -- Variable to determine when server wide xp resets
+local XP_RESET_INTERVAL     = "20w"   -- Variable to determine when server wide xp resets
 -- XP_RESET_INTERVAL = "5d"  - 5 days
 -- XP_RESET_INTERVAL = "36h" - 36 hours
 -- XP_RESET_INTERVAL = "2w"  - 2 weeks
@@ -223,6 +223,18 @@ local getGUID = function(clientNum)
     return et.Info_ValueForKey(et.trap_GetUserinfo(clientNum), "cl_guid")
 end
 
+--- Check if guid is a bot
+-- [clientNum]
+local isBot = function(clientNum)
+    local guid = getGUID(clientNum)
+    if string.match(tostring(guid), "OMNIBOT") then
+        return true
+    else
+        return false
+    end
+end
+
+
 --- Make sure guid is a valid guid before saving to it
 -- Also checks for bot xpsave
 -- [clientNum]
@@ -242,16 +254,7 @@ local validateGUID = function(clientNum, guid)
     return true
 end
 
---- Check if guid is a bot
--- [clientNum]
-local isBot = function(clientNum)
-    local guid = getGUID(clientNum)
-    if string.match(tostring(guid), "OMNIBOT") then
-        return true
-    else
-        return false
-    end
-end
+
 
 --- Sets skill points for client in the XP table
 -- [clientNum]
